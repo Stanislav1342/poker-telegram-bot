@@ -164,7 +164,7 @@ async def poker_test_handler(message: Message):
 @dp.message(Command("admin"))
 async def admin_handler(message: Message):
     # ⚠️ ЗАМЕНИТЕ 123456789 НА ВАШ TELEGRAM ID!
-    admin_ids = [123456789]  
+    admin_ids = [1308823467]  
     
     if message.from_user.id in admin_ids:
         await message.answer(
