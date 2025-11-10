@@ -25,8 +25,8 @@ class UserStates(StatesGroup):
     poker_test = State()
 
 # Загружаем данные из базы при запуске
-players_rating = db.get_all_players()
-player_photo_ids = db.get_all_cards()
+players_rating = {}
+player_photo_ids = {}
 
 # Данные для теста по покеру
 poker_test_questions = [
@@ -116,6 +116,13 @@ def get_test_keyboard(question_index):
     keyboard.adjust(1)
     return keyboard.as_markup(resize_keyboard=True)
 
+# Функция для загрузки данных при старте
+async def load_initial_data():
+    global players_rating, player_photo_ids
+    players_rating = await db.get_all_players()
+    player_photo_ids = await db.get_all_cards()
+    logging.info("✅ Данные загружены из базы")
+
 @dp.message(Command("start"))
 async def start_handler(message: Message):
     welcome_text = (
@@ -146,8 +153,8 @@ async def process_player_name(message: Message, state: FSMContext):
         rating = players_rating[found_player]
         position = get_player_position(found_player)
         
-        # Пытаемся отправить карточку
-        file_id = db.get_player_card(found_player)
+        # Пытаемся отправить карточку - ✅ ДОБАВЛЕНО AWAIT
+        file_id = await db.get_player_card(found_player)
         if file_id:
             try:
                 await message.answer_photo(
@@ -183,7 +190,7 @@ async def full_rating_handler(message: Message):
     
     sorted_players = sorted(players_rating.items(), key=lambda x: x[1], reverse=True)
     for i, (name, points) in enumerate(sorted_players, 1):
-        rating_text += f"{i}. {name}: {points} баллов\n"
+        rating_text += f"{i}. {name}: {points}\n"  # ✅ Убрали "баллов"
     
     await message.answer(rating_text, reply_markup=get_main_keyboard(message.from_user.id))
 
@@ -327,8 +334,8 @@ async def add_player_handler(message: Message, state: FSMContext):
     await message.answer(
         "Введите данные игрока в формате:\n"
         "Имя Рейтинг\n\n"
-        "Пример: Спас 4.4\n"
-        "Или: Спас 4,4\n\n"
+        "Пример: Стас 4.4\n"
+        "Или: Стас 4,4\n\n"
         "Рейтинг по 5-балльной шкале"
     )
     await state.set_state(UserStates.admin_add_player)
@@ -339,7 +346,7 @@ async def process_add_player(message: Message, state: FSMContext):
     try:
         data = message.text.split()
         if len(data) != 2:
-            await message.answer("❌ Неверный формат. Пример: Спас 4.4")
+            await message.answer("❌ Неверный формат. Пример: Стас 4.4")
             return
         
         name = data[0]
@@ -350,8 +357,8 @@ async def process_add_player(message: Message, state: FSMContext):
             await message.answer("❌ Рейтинг должен быть от 0 до 5")
             return
         
-        # Сохраняем в базу данных
-        if db.add_player(name, rating):
+        # Сохраняем в базу данных - ✅ ДОБАВЛЕНО AWAIT
+        if await db.add_player(name, rating):
             players_rating[name] = rating  # Обновляем кэш
             await message.answer(
                 f"✅ Игрок добавлен:\n👤 {name}\n⭐️ Рейтинг: {rating}",
@@ -361,7 +368,7 @@ async def process_add_player(message: Message, state: FSMContext):
             await message.answer("❌ Ошибка при добавлении игрока в базу")
         
     except ValueError:
-        await message.answer("❌ Рейтинг должен быть числом. Пример: Спас 4.4 или Спас 4,4")
+        await message.answer("❌ Рейтинг должен быть числом. Пример: Стас 4.4 или Стас 4,4")
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}")
     
@@ -389,7 +396,8 @@ async def remove_player_handler(message: Message, state: FSMContext):
 async def process_remove_player(message: Message, state: FSMContext):
     player_name = message.text.strip()
     
-    if db.remove_player(player_name):
+    # ✅ ДОБАВЛЕНО AWAIT
+    if await db.remove_player(player_name):
         # Обновляем кэш
         if player_name in players_rating:
             del players_rating[player_name]
@@ -438,9 +446,9 @@ async def process_player_card(message: Message):
         )
         return
     
-    # Сохраняем file_id в базу данных
+    # Сохраняем file_id в базу данных - ✅ ДОБАВЛЕНО AWAIT
     photo = message.photo[-1]
-    if db.save_player_card(player_name, photo.file_id):
+    if await db.save_player_card(player_name, photo.file_id):
         await message.answer(
             f"✅ Карточка для игрока '{player_name}' успешно загружена и сохранена!\n"
             f"📸 Теперь игроки смогут получать эту карточку даже после перезапуска бота.",
@@ -459,7 +467,8 @@ async def stats_handler(message: Message):
         return
     
     total_players = len(players_rating)
-    players_with_cards = len(db.get_all_cards())
+    # ✅ ДОБАВЛЕНО AWAIT
+    players_with_cards = len(await db.get_all_cards())
     
     stats_text = (
         f"📊 Статистика бота:\n\n"
@@ -487,6 +496,10 @@ async def main_menu_handler(message: Message):
 
 async def main():
     logging.basicConfig(level=logging.INFO)
+    
+    # Загружаем данные при старте - ✅ ДОБАВЛЕНО AWAIT
+    await load_initial_data()
+    
     logging.info("🤖 Бот запущен с PostgreSQL и исправленным тестом!")
     await dp.start_polling(bot)
 
