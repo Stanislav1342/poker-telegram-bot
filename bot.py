@@ -20,24 +20,83 @@ dp = Dispatcher()
 class UserStates(StatesGroup):
     waiting_for_player_name = State()
     admin_add_player = State()
+    admin_remove_player = State()
+    poker_test = State()
 
 # База данных игроков (имя: рейтинг)
 players_rating = {
     "Рунге": 4.8,
-    "Анна": 4.9, 
-    "Артем": 4.2,
+    "Мария": 4.7, 
+    "Петр": 4.6,
 }
 
 # База данных карточек (имя: file_id фото)
 player_photo_ids = {}
 
+# Данные для теста по покеру
+poker_test_questions = [
+    {
+        "question": "Какая комбинация СТАРШЕ?",
+        "options": ["Флеш", "Стрит", "Фулл-хаус", "Каре"],
+        "correct": 3,
+        "explanation": "✅ Правильно! Каре > Фулл-хаус > Флеш > Стрит"
+    },
+    {
+        "question": "Сколько карт в комбинации 'Каре'?",
+        "options": ["3 карты", "4 карты", "5 карт", "6 карт"],
+        "correct": 1,
+        "explanation": "✅ Верно! Каре - это 4 карты одного достоинства"
+    },
+    {
+        "question": "Что такое 'Флеш'?",
+        "options": [
+            "5 карт по порядку", 
+            "5 карт одной масти", 
+            "3 карты одного достоинства", 
+            "2 пары"
+        ],
+        "correct": 1,
+        "explanation": "✅ Правильно! Флеш - 5 карт одной масти"
+    },
+    {
+        "question": "Какая комбинация САМАЯ СТАРШАЯ?",
+        "options": ["Флеш-рояль", "Стрит-флеш", "Каре", "Фулл-хаус"],
+        "correct": 0,
+        "explanation": "✅ Верно! Флеш-рояль - самая старшая комбинация"
+    },
+    {
+        "question": "Что такое 'Стрит'?",
+        "options": [
+            "5 карт разной масти", 
+            "5 карт по порядку", 
+            "4 карты одного достоинства", 
+            "2 карты одного достоинства"
+        ],
+        "correct": 1,
+        "explanation": "✅ Правильно! Стрит - 5 карт по порядку любой масти"
+    }
+]
+
+# Переменные для теста
+user_test_data = {}
+
+# Проверка является ли пользователь админом
+def is_admin(user_id):
+    admin_ids = [1308823467]  # Ваш ID
+    return user_id in admin_ids
+
 # Клавиатура главного меню
-def get_main_keyboard():
+def get_main_keyboard(user_id):
     keyboard = ReplyKeyboardBuilder()
     keyboard.add(KeyboardButton(text="🎯 Мой рейтинг"))
     keyboard.add(KeyboardButton(text="🏆 Общий рейтинг"))
     keyboard.add(KeyboardButton(text="📚 Правила покера"))
     keyboard.add(KeyboardButton(text="🎮 Тест по покеру"))
+    
+    # Добавляем кнопку админа только для администратора
+    if is_admin(user_id):
+        keyboard.add(KeyboardButton(text="👑 Админ-панель"))
+    
     keyboard.adjust(2)
     return keyboard.as_markup(resize_keyboard=True)
 
@@ -45,19 +104,30 @@ def get_main_keyboard():
 def get_admin_keyboard():
     keyboard = ReplyKeyboardBuilder()
     keyboard.add(KeyboardButton(text="➕ Добавить игрока"))
+    keyboard.add(KeyboardButton(text="🗑 Удалить игрока"))
     keyboard.add(KeyboardButton(text="📤 Загрузить карточку"))
     keyboard.add(KeyboardButton(text="📊 Статистика"))
     keyboard.add(KeyboardButton(text="🔙 Главное меню"))
     keyboard.adjust(2)
     return keyboard.as_markup(resize_keyboard=True)
 
+# Клавиатура для теста
+def get_test_keyboard(question_index):
+    keyboard = ReplyKeyboardBuilder()
+    question = poker_test_questions[question_index]
+    for i, option in enumerate(question["options"]):
+        keyboard.add(KeyboardButton(text=f"{i+1}. {option}"))
+    keyboard.add(KeyboardButton(text="❌ Отменить тест"))
+    keyboard.adjust(1)
+    return keyboard.as_markup(resize_keyboard=True)
+
 @dp.message(Command("start"))
 async def start_handler(message: Message):
     welcome_text = (
-        "🎯 Добро пожаловать в покер-клуб Magnum!\n\n"
+        "🎯 Добро пожаловать в покер-клуб HeartPipes!\n\n"
         "Выберите действие:"
     )
-    await message.answer(welcome_text, reply_markup=get_main_keyboard())
+    await message.answer(welcome_text, reply_markup=get_main_keyboard(message.from_user.id))
 
 # Обработка кнопки "Мой рейтинг"
 @dp.message(F.text == "🎯 Мой рейтинг")
@@ -86,26 +156,26 @@ async def process_player_name(message: Message, state: FSMContext):
             try:
                 await message.answer_photo(
                     player_photo_ids[found_player],
-                    caption=f"👤 {found_player}\n🏆 Рейтинг: {rating}\n📍 Место: {position}",
-                    reply_markup=get_main_keyboard()
+                    caption=f"👤 {found_player}\n⭐️ Рейтинг: {rating}\n📍 Место: {position}",
+                    reply_markup=get_main_keyboard(message.from_user.id)
                 )
             except Exception as e:
                 await message.answer(
-                    f"👤 {found_player}\n🏆 Рейтинг: {rating}\n📍 Место: {position}\n"
+                    f"👤 {found_player}\n⭐️ Рейтинг: {rating}\n📍 Место: {position}\n"
                     f"❌ Ошибка загрузки карточки",
-                    reply_markup=get_main_keyboard()
+                    reply_markup=get_main_keyboard(message.from_user.id)
                 )
         else:
             await message.answer(
-                f"👤 {found_player}\n🏆 Рейтинг: {rating}\n📍 Место: {position}\n"
+                f"👤 {found_player}\n⭐️ Рейтинг: {rating}\n📍 Место: {position}\n"
                 f"ℹ️ Карточка игрока готовится",
-                reply_markup=get_main_keyboard()
+                reply_markup=get_main_keyboard(message.from_user.id)
             )
     else:
         await message.answer(
             f"❌ Игрок '{player_name}' не найден.\n"
             "Проверьте имя или обратитесь к администратору.",
-            reply_markup=get_main_keyboard()
+            reply_markup=get_main_keyboard(message.from_user.id)
         )
     
     await state.clear()
@@ -117,9 +187,9 @@ async def full_rating_handler(message: Message):
     
     sorted_players = sorted(players_rating.items(), key=lambda x: x[1], reverse=True)
     for i, (name, points) in enumerate(sorted_players, 1):
-        rating_text += f"{i}. {name}: {points} очков\n"
+        rating_text += f"{i}. {name}: {points} баллов\n"
     
-    await message.answer(rating_text, reply_markup=get_main_keyboard())
+    await message.answer(rating_text, reply_markup=get_main_keyboard(message.from_user.id))
 
 # Обработка кнопки "Правила покера"
 @dp.message(F.text == "📚 Правила покера")
@@ -143,48 +213,113 @@ async def rules_handler(message: Message):
 10. 📊 Старшая карта
 """
     
-    # Клавиатура с кнопкой теста после правил
-    test_keyboard = ReplyKeyboardBuilder()
-    test_keyboard.add(KeyboardButton(text="🎮 Пройти тест по покеру"))
-    test_keyboard.add(KeyboardButton(text="🔙 Главное меню"))
-    
-    await message.answer(rules_text, reply_markup=test_keyboard.as_markup(resize_keyboard=True))
+    await message.answer(rules_text, reply_markup=get_main_keyboard(message.from_user.id))
 
 # Обработка кнопки "Тест по покеру"
 @dp.message(F.text == "🎮 Тест по покеру")
-@dp.message(F.text == "🎮 Пройти тест по покеру")
-async def poker_test_handler(message: Message):
-    await message.answer(
-        "🎮 Тест по покеру в разработке...\n"
-        "Скоро здесь появятся вопросы по правилам покера!",
-        reply_markup=get_main_keyboard()
+async def poker_test_handler(message: Message, state: FSMContext):
+    user_test_data[message.from_user.id] = {
+        "current_question": 0,
+        "score": 0,
+        "answers": []
+    }
+    
+    await send_question(message, state)
+
+async def send_question(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    current_question = user_test_data[user_id]["current_question"]
+    
+    if current_question >= len(poker_test_questions):
+        await finish_test(message, state)
+        return
+    
+    question = poker_test_questions[current_question]
+    question_text = f"❓ Вопрос {current_question + 1}/{len(poker_test_questions)}:\n\n{question['question']}"
+    
+    await message.answer(question_text, reply_markup=get_test_keyboard(current_question))
+    await state.set_state(UserStates.poker_test)
+
+# Обработка ответов на тест
+@dp.message(UserStates.poker_test)
+async def process_test_answer(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    
+    if message.text == "❌ Отменить тест":
+        await message.answer("Тест отменен", reply_markup=get_main_keyboard(user_id))
+        await state.clear()
+        return
+    
+    try:
+        # Парсим номер ответа (1., 2., 3., 4.)
+        answer_num = int(message.text.split('.')[0]) - 1
+        current_question = user_test_data[user_id]["current_question"]
+        question = poker_test_questions[current_question]
+        
+        # Проверяем ответ
+        is_correct = (answer_num == question["correct"])
+        if is_correct:
+            user_test_data[user_id]["score"] += 1
+        
+        user_test_data[user_id]["answers"].append(is_correct)
+        
+        # Отправляем объяснение
+        await message.answer(question["explanation"])
+        
+        # Переходим к следующему вопросу
+        user_test_data[user_id]["current_question"] += 1
+        await asyncio.sleep(2)  # Пауза перед следующим вопросом
+        await send_question(message, state)
+        
+    except (ValueError, IndexError):
+        await message.answer("❌ Пожалуйста, выберите вариант ответа (1, 2, 3 или 4)")
+
+async def finish_test(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    score = user_test_data[user_id]["score"]
+    total = len(poker_test_questions)
+    
+    result_text = (
+        f"🎉 Тест завершен!\n\n"
+        f"📊 Ваш результат: {score}/{total}\n"
+        f"📈 Процент правильных ответов: {score/total*100:.1f}%\n\n"
     )
+    
+    if score == total:
+        result_text += "🏆 Отлично! Вы отлично знаете правила покера!"
+    elif score >= total * 0.7:
+        result_text += "👍 Хорошо! Вы хорошо разбираетесь в покере!"
+    else:
+        result_text += "📚 Есть куда расти! Повторите правила покера."
+    
+    await message.answer(result_text, reply_markup=get_main_keyboard(user_id))
+    await state.clear()
 
 # Админ команды
 @dp.message(Command("admin"))
+@dp.message(F.text == "👑 Админ-панель")
 async def admin_handler(message: Message):
-    # ✅ ВАШ ID: 1308823467
-    admin_ids = [1308823467]  
-    
-    if message.from_user.id in admin_ids:
-        await message.answer(
-            "👑 Панель администратора:",
-            reply_markup=get_admin_keyboard()
-        )
-    else:
+    if not is_admin(message.from_user.id):
         await message.answer("❌ Доступ запрещен")
+        return
+    
+    await message.answer(
+        "👑 Панель администратора:",
+        reply_markup=get_admin_keyboard()
+    )
 
 # Добавление игрока (админ)
 @dp.message(F.text == "➕ Добавить игрока")
 async def add_player_handler(message: Message, state: FSMContext):
-    admin_ids = [1308823467]  # ✅ ВАШ ID
-    if message.from_user.id not in admin_ids:
+    if not is_admin(message.from_user.id):
         return
     
     await message.answer(
         "Введите данные игрока в формате:\n"
         "Имя Рейтинг\n\n"
-        "Пример: Стас 4.7"
+        "Пример: Стас 4.4\n"
+        "Или: Стас 4,4\n\n"
+        "Рейтинг по 5-балльной шкале"
     )
     await state.set_state(UserStates.admin_add_player)
 
@@ -221,11 +356,50 @@ async def process_add_player(message: Message, state: FSMContext):
     
     await state.clear()
 
+# Удаление игрока (админ)
+@dp.message(F.text == "🗑 Удалить игрока")
+async def remove_player_handler(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    if not players_rating:
+        await message.answer("❌ В базе нет игроков для удаления")
+        return
+    
+    players_list = "\n".join([f"• {name}" for name in players_rating.keys()])
+    await message.answer(
+        f"📋 Список игроков:\n{players_list}\n\n"
+        "Введите имя игрока для удаления:"
+    )
+    await state.set_state(UserStates.admin_remove_player)
+
+# Обработка удаления игрока
+@dp.message(UserStates.admin_remove_player)
+async def process_remove_player(message: Message, state: FSMContext):
+    player_name = message.text.strip()
+    
+    if player_name in players_rating:
+        # Удаляем игрока и его карточку
+        del players_rating[player_name]
+        if player_name in player_photo_ids:
+            del player_photo_ids[player_name]
+        
+        await message.answer(
+            f"✅ Игрок '{player_name}' удален из базы",
+            reply_markup=get_admin_keyboard()
+        )
+    else:
+        await message.answer(
+            f"❌ Игрок '{player_name}' не найден в базе",
+            reply_markup=get_admin_keyboard()
+        )
+    
+    await state.clear()
+
 # Загрузка карточки игрока (админ)
 @dp.message(F.text == "📤 Загрузить карточку")
 async def upload_card_handler(message: Message):
-    admin_ids = [1308823467]  # ✅ ВАШ ID
-    if message.from_user.id not in admin_ids:
+    if not is_admin(message.from_user.id):
         return
     
     await message.answer(
@@ -237,8 +411,7 @@ async def upload_card_handler(message: Message):
 # Обработка загруженной карточки
 @dp.message(F.photo)
 async def process_player_card(message: Message):
-    admin_ids = [1308823467]  # ✅ ВАШ ID
-    if message.from_user.id not in admin_ids:
+    if not is_admin(message.from_user.id):
         return
     
     if not message.caption:
@@ -268,8 +441,7 @@ async def process_player_card(message: Message):
 # Команда для просмотра статистики (админ)
 @dp.message(F.text == "📊 Статистика")
 async def stats_handler(message: Message):
-    admin_ids = [1308823467]  # ✅ ВАШ ID
-    if message.from_user.id not in admin_ids:
+    if not is_admin(message.from_user.id):
         return
     
     total_players = len(players_rating)
@@ -297,22 +469,11 @@ def get_player_position(player_name):
 # Обработка кнопки "Главное меню"
 @dp.message(F.text == "🔙 Главное меню")
 async def main_menu_handler(message: Message):
-    await message.answer("Возвращаемся в главное меню:", reply_markup=get_main_keyboard())
-
-# Команда для проверки работы бота
-@dp.message(Command("status"))
-async def status_handler(message: Message):
-    status_text = (
-        f"🤖 Бот работает нормально\n"
-        f"👤 Игроков в базе: {len(players_rating)}\n"
-        f"🖼 Загружено карточек: {len(player_photo_ids)}\n"
-        f"⚡️ Используется хранение file_id в памяти"
-    )
-    await message.answer(status_text)
+    await message.answer("Возвращаемся в главное меню:", reply_markup=get_main_keyboard(message.from_user.id))
 
 async def main():
     logging.basicConfig(level=logging.INFO)
-    logging.info("🤖 Бот запущен на Railway с хранением file_id в памяти!")
+    logging.info("🤖 Бот запущен с тестом по покеру и админ-панелью!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
