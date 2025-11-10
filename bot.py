@@ -23,9 +23,9 @@ class UserStates(StatesGroup):
 
 # База данных игроков (имя: рейтинг)
 players_rating = {
-    "Рунге": 4850,
-    "Мария": 4720, 
-    "Петр": 4630,
+    "Рунге": 4.8,
+    "Анна": 4.9, 
+    "Артем": 4.2,
 }
 
 # База данных карточек (имя: file_id фото)
@@ -54,7 +54,7 @@ def get_admin_keyboard():
 @dp.message(Command("start"))
 async def start_handler(message: Message):
     welcome_text = (
-        "🎯 Добро пожаловать в покер-клуб HeartPipes!\n\n"
+        "🎯 Добро пожаловать в покер-клуб Magnum!\n\n"
         "Выберите действие:"
     )
     await message.answer(welcome_text, reply_markup=get_main_keyboard())
