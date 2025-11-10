@@ -163,7 +163,7 @@ async def poker_test_handler(message: Message):
 # Админ команды
 @dp.message(Command("admin"))
 async def admin_handler(message: Message):
-    # ⚠️ ЗАМЕНИТЕ 123456789 НА ВАШ TELEGRAM ID!
+    # ✅ ВАШ ID: 1308823467
     admin_ids = [1308823467]  
     
     if message.from_user.id in admin_ids:
@@ -177,7 +177,7 @@ async def admin_handler(message: Message):
 # Добавление игрока (админ)
 @dp.message(F.text == "➕ Добавить игрока")
 async def add_player_handler(message: Message, state: FSMContext):
-    admin_ids = [1308823467]  # ⚠️ ЗАМЕНИТЕ НА ВАШ ID!
+    admin_ids = [1308823467]  # ✅ ВАШ ID
     if message.from_user.id not in admin_ids:
         return
     
@@ -216,7 +216,7 @@ async def process_add_player(message: Message, state: FSMContext):
 # Загрузка карточки игрока (админ)
 @dp.message(F.text == "📤 Загрузить карточку")
 async def upload_card_handler(message: Message):
-    admin_ids = [1308823467]  # ⚠️ ЗАМЕНИТЕ НА ВАШ ID!
+    admin_ids = [1308823467]  # ✅ ВАШ ID
     if message.from_user.id not in admin_ids:
         return
     
@@ -229,7 +229,7 @@ async def upload_card_handler(message: Message):
 # Обработка загруженной карточки
 @dp.message(F.photo)
 async def process_player_card(message: Message):
-    admin_ids = [1308823467]  # ⚠️ ЗАМЕНИТЕ НА ВАШ ID!
+    admin_ids = [1308823467]  # ✅ ВАШ ID
     if message.from_user.id not in admin_ids:
         return
     
@@ -260,7 +260,7 @@ async def process_player_card(message: Message):
 # Команда для просмотра статистики (админ)
 @dp.message(F.text == "📊 Статистика")
 async def stats_handler(message: Message):
-    admin_ids = [1308823467]  # ⚠️ ЗАМЕНИТЕ НА ВАШ ID!
+    admin_ids = [1308823467]  # ✅ ВАШ ID
     if message.from_user.id not in admin_ids:
         return
     
