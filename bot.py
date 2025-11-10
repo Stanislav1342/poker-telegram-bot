@@ -184,7 +184,7 @@ async def add_player_handler(message: Message, state: FSMContext):
     await message.answer(
         "Введите данные игрока в формате:\n"
         "Имя Рейтинг\n\n"
-        "Пример: Рунге 4850"
+        "Пример: Стас 4.7"
     )
     await state.set_state(UserStates.admin_add_player)
 
@@ -194,20 +194,28 @@ async def process_add_player(message: Message, state: FSMContext):
     try:
         data = message.text.split()
         if len(data) != 2:
-            await message.answer("❌ Неверный формат. Пример: Рунге 4850")
+            await message.answer("❌ Неверный формат. Пример: Стас 4.4")
             return
         
         name = data[0]
-        rating = int(data[1])
+        
+        # Заменяем запятую на точку и преобразуем в float
+        rating_str = data[1].replace(',', '.')
+        rating = float(rating_str)
+        
+        # Проверяем что рейтинг в диапазоне 0-5
+        if rating < 0 or rating > 5:
+            await message.answer("❌ Рейтинг должен быть от 0 до 5")
+            return
         
         players_rating[name] = rating
         await message.answer(
-            f"✅ Игрок добавлен:\n👤 {name}\n🏆 {rating} очков",
+            f"✅ Игрок добавлен:\n👤 {name}\n⭐️ Рейтинг: {rating}",
             reply_markup=get_admin_keyboard()
         )
         
     except ValueError:
-        await message.answer("❌ Рейтинг должен быть числом. Пример: Рунге 4850")
+        await message.answer("❌ Рейтинг должен быть числом. Пример: Стас 4.4 или Стас 4,4")
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}")
     
