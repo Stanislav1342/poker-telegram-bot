@@ -17,6 +17,9 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
+# Словарь для отслеживания уже обработанных запусков (ДОБАВЬТЕ ЭТО)
+processed_starts = {}
+
 # Состояния для FSM
 class UserStates(StatesGroup):
     waiting_for_player_name = State()
@@ -557,16 +560,34 @@ async def process_player_card(message: Message):
 
 @dp.message(Command("start"))
 async def start_handler(message: Message, command: CommandObject):
+    user_id = message.from_user.id
+    current_time = message.date.timestamp()
+    
     # Игнорируем повторные вызовы /start с параметрами
     if command.args:
         return
+    
+    # Проверяем, не обрабатывали ли мы недавно этот start
+    if user_id in processed_starts:
+        last_time = processed_starts[user_id]
+        # Если прошло меньше 2 секунд - игнорируем повторный вызов
+        if current_time - last_time < 2:
+            return
+    
+    # Сохраняем время обработки
+    processed_starts[user_id] = current_time
+    
+    # Очищаем старые записи (чтобы не накапливались)
+    cleanup_time = current_time - 10  # 10 секунд назад
+    global processed_starts
+    processed_starts = {uid: time for uid, time in processed_starts.items() if time > cleanup_time}
     
     welcome_text = (
         "♥️♣️ Добро пожаловать в MagnumPoker ♦️♠️\n\n"
         "Выберите действие:"
     )
     await message.answer(welcome_text, reply_markup=get_main_keyboard(message.from_user.id))
-
+    
 # Обработка кнопки "Мой рейтинг"
 @dp.message(F.text == "🎯 Мой рейтинг")
 async def my_rating_handler(message: Message, state: FSMContext):
