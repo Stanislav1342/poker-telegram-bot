@@ -8,7 +8,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, Message
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from dotenv import load_dotenv
-from database import db  # ✅ Импортируем PostgreSQL базу
+from database import db  # ✅ Импортируем SQLite базу
 
 load_dotenv()
 
@@ -33,13 +33,13 @@ poker_test_questions = [
     {
         "question": "Какая комбинация СТАРШЕ?",
         "options": ["Флеш", "Стрит", "Фулл-хаус", "Каре"],
-        "correct": 3,  # Каре (4-й вариант, индекс 3)
+        "correct": 3,
         "explanation": "Каре > Фулл-хаус > Флеш > Стрит"
     },
     {
         "question": "Сколько карт в комбинации 'Каре'?",
         "options": ["3 карты", "4 карты", "5 карт", "6 карт"],
-        "correct": 1,  # 4 карты (2-й вариант, индекс 1)
+        "correct": 1,
         "explanation": "Каре - это 4 карты одного достоинства"
     },
     {
@@ -50,13 +50,13 @@ poker_test_questions = [
             "3 карты одного достоинства", 
             "2 пары"
         ],
-        "correct": 1,  # 5 карт одной масти (2-й вариант, индекс 1)
+        "correct": 1,
         "explanation": "Флеш - 5 карт одной масти"
     },
     {
         "question": "Какая комбинация САМАЯ СТАРШАЯ?",
         "options": ["Флеш-рояль", "Стрит-флеш", "Каре", "Фулл-хаус"],
-        "correct": 0,  # Флеш-рояль (1-й вариант, индекс 0)
+        "correct": 0,
         "explanation": "Флеш-рояль - самая старшая комбинация"
     },
     {
@@ -67,7 +67,7 @@ poker_test_questions = [
             "4 карты одного достоинства", 
             "2 карты одного достоинства"
         ],
-        "correct": 1,  # 5 карт по порядку (2-й вариант, индекс 1)
+        "correct": 1,
         "explanation": "Стрит - 5 карт по порядку любой масти"
     }
 ]
@@ -77,7 +77,7 @@ user_test_data = {}
 
 # Проверка является ли пользователь админом
 def is_admin(user_id):
-    admin_ids = [1308823467]  # Ваш ID
+    admin_ids = [1308823467]
     return user_id in admin_ids
 
 # Клавиатура главного меню
@@ -88,7 +88,6 @@ def get_main_keyboard(user_id):
     keyboard.add(KeyboardButton(text="📚 Правила покера"))
     keyboard.add(KeyboardButton(text="🎮 Тест по покеру"))
     
-    # Добавляем кнопку админа только для администратора
     if is_admin(user_id):
         keyboard.add(KeyboardButton(text="👑 Админ-панель"))
     
@@ -135,7 +134,6 @@ async def my_rating_handler(message: Message, state: FSMContext):
 async def process_player_name(message: Message, state: FSMContext):
     player_name = message.text.strip()
     
-    # Поиск игрока (регистронезависимый)
     found_player = None
     for name in players_rating:
         if name.lower() == player_name.lower():
@@ -146,7 +144,6 @@ async def process_player_name(message: Message, state: FSMContext):
         rating = players_rating[found_player]
         position = get_player_position(found_player)
         
-        # Пытаемся отправить карточку
         file_id = db.get_player_card(found_player)
         if file_id:
             try:
@@ -183,7 +180,7 @@ async def full_rating_handler(message: Message):
     
     sorted_players = sorted(players_rating.items(), key=lambda x: x[1], reverse=True)
     for i, (name, points) in enumerate(sorted_players, 1):
-        rating_text += f"{i}. {name}: {points}\n"  # ✅ Убрали "баллов"
+        rating_text += f"{i}. {name}: {points}\n"
     
     await message.answer(rating_text, reply_markup=get_main_keyboard(message.from_user.id))
 
@@ -208,7 +205,6 @@ async def rules_handler(message: Message):
 9. 👑 Пара - 2 карты одного достоинства
 10. 📊 Старшая карта
 """
-    
     await message.answer(rules_text, reply_markup=get_main_keyboard(message.from_user.id))
 
 # Обработка кнопки "Тест по покеру"
@@ -219,7 +215,6 @@ async def poker_test_handler(message: Message, state: FSMContext):
         "score": 0,
         "answers": []
     }
-    
     await send_question(message, state)
 
 async def send_question(message: Message, state: FSMContext):
@@ -236,7 +231,7 @@ async def send_question(message: Message, state: FSMContext):
     await message.answer(question_text, reply_markup=get_test_keyboard(current_question))
     await state.set_state(UserStates.poker_test)
 
-# Обработка ответов на тест - ИСПРАВЛЕННАЯ ВЕРСИЯ
+# Обработка ответов на тест
 @dp.message(UserStates.poker_test)
 async def process_test_answer(message: Message, state: FSMContext):
     user_id = message.from_user.id
@@ -247,38 +242,31 @@ async def process_test_answer(message: Message, state: FSMContext):
         return
     
     try:
-        # Парсим номер ответа (1., 2., 3., 4.)
         answer_text = message.text.strip()
         answer_num = int(answer_text.split('.')[0]) - 1
         
         current_question = user_test_data[user_id]["current_question"]
         question = poker_test_questions[current_question]
         
-        # Проверяем что номер ответа в допустимом диапазоне
         if answer_num < 0 or answer_num >= len(question["options"]):
             await message.answer(f"❌ Пожалуйста, выберите вариант от 1 до {len(question['options'])}")
             return
         
-        # Проверяем ответ (правильный ответ хранится в question["correct"])
         is_correct = (answer_num == question["correct"])
         
-        # Обновляем счетчик
         if is_correct:
             user_test_data[user_id]["score"] += 1
         
-        # Сохраняем ответ
         user_test_data[user_id]["answers"].append(is_correct)
         
-        # Отправляем объяснение
         if is_correct:
             await message.answer(f"✅ {question['explanation']}")
         else:
             correct_option = question["options"][question["correct"]]
             await message.answer(f"❌ Неправильно. {question['explanation']}\n\nПравильный ответ: {correct_option}")
         
-        # Переходим к следующему вопросу
         user_test_data[user_id]["current_question"] += 1
-        await asyncio.sleep(2)  # Пауза перед следующим вопросом
+        await asyncio.sleep(2)
         await send_question(message, state)
         
     except (ValueError, IndexError):
@@ -350,9 +338,8 @@ async def process_add_player(message: Message, state: FSMContext):
             await message.answer("❌ Рейтинг должен быть от 0 до 5")
             return
         
-        # Сохраняем в базу данных
         if db.add_player(name, rating):
-            players_rating[name] = rating  # Обновляем кэш
+            players_rating[name] = rating
             await message.answer(
                 f"✅ Игрок добавлен:\n👤 {name}\n⭐️ Рейтинг: {rating}",
                 reply_markup=get_admin_keyboard()
@@ -390,7 +377,6 @@ async def process_remove_player(message: Message, state: FSMContext):
     player_name = message.text.strip()
     
     if db.remove_player(player_name):
-        # Обновляем кэш
         if player_name in players_rating:
             del players_rating[player_name]
         
@@ -438,7 +424,6 @@ async def process_player_card(message: Message):
         )
         return
     
-    # Сохраняем file_id в базу данных
     photo = message.photo[-1]
     if db.save_player_card(player_name, photo.file_id):
         await message.answer(
@@ -466,7 +451,7 @@ async def stats_handler(message: Message):
         f"👤 Всего игроков: {total_players}\n"
         f"🖼 Игроков с карточками: {players_with_cards}\n"
         f"📈 Загружено карточек: {players_with_cards}/{total_players}\n\n"
-        f"💾 Данные сохраняются в PostgreSQL\n"
+        f"💾 Данные сохраняются в SQLite базе\n"
         f"🔄 Перезапуск бота не удалит данные!"
     )
     
@@ -487,7 +472,7 @@ async def main_menu_handler(message: Message):
 
 async def main():
     logging.basicConfig(level=logging.INFO)
-    logging.info("🤖 Бот запущен с PostgreSQL (psycopg2) и исправленным тестом!")
+    logging.info("🤖 Бот запущен с SQLite базой данных!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
