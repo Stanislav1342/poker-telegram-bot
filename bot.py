@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command, StateFilter
+from aiogram.filters import Command, StateFilter, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, Message
@@ -75,6 +75,11 @@ poker_test_questions = [
 
 # Переменные для теста
 user_test_data = {}
+
+# Функция для нормализации имен (е/ё)
+def normalize_name(name):
+    """Нормализация имени: заменяет ё на е и приводит к нижнему регистру"""
+    return name.lower().replace('ё', 'е')
 
 # Проверка является ли пользователь админом
 def is_admin(user_id):
@@ -304,6 +309,18 @@ async def db_check_handler(message: Message):
     except Exception as e:
         await message.answer(f"🔴 ОШИБКА БАЗЫ ДАННЫХ:\n{str(e)}")
 
+@dp.message(Command("get_rules_photo_id"))
+async def get_rules_photo_id_handler(message: Message):
+    """Получить file_id фото для правил"""
+    if not is_admin(message.from_user.id):
+        return
+    
+    file_id = db.get_player_card("rules_photo")
+    if file_id:
+        await message.answer(f"🆔 File_ID для фото правил:\n`{file_id}`", parse_mode="Markdown")
+    else:
+        await message.answer("❌ Фото для правил еще не загружено")
+
 # ========== ОСНОВНЫЕ АДМИН КОМАНДЫ ==========
 
 @dp.message(Command("admin"))
@@ -401,7 +418,18 @@ async def process_update_rating(message: Message, state: FSMContext):
         
         # Последняя часть - рейтинг, остальные - имя игрока
         rating_str = parts[-1].replace(',', '.')
-        player_name = ' '.join(parts[:-1])
+        search_name = normalize_name(' '.join(parts[:-1]))
+        
+        # Ищем игрока с учетом е/ё
+        found_player = None
+        for name in players_rating:
+            if normalize_name(name) == search_name:
+                found_player = name
+                break
+        
+        if not found_player:
+            await message.answer(f"❌ Игрок не найден")
+            return
         
         rating = float(rating_str)
         
@@ -410,16 +438,16 @@ async def process_update_rating(message: Message, state: FSMContext):
             return
         
         # Обновляем рейтинг в базе
-        if db.update_player_rating(player_name, rating):
+        if db.update_player_rating(found_player, rating):
             # Обновляем кэш
-            players_rating[player_name] = rating
+            players_rating[found_player] = rating
             await message.answer(
-                f"✅ Рейтинг обновлен:\n👤 {player_name}\n⭐️ Новый рейтинг: {rating}",
+                f"✅ Рейтинг обновлен:\n👤 {found_player}\n⭐️ Новый рейтинг: {rating}",
                 reply_markup=get_admin_keyboard()
             )
         else:
             await message.answer(
-                f"❌ Игрок '{player_name}' не найден в базе",
+                f"❌ Ошибка при обновлении рейтинга",
                 reply_markup=get_admin_keyboard()
             )
         
@@ -449,20 +477,27 @@ async def remove_player_handler(message: Message, state: FSMContext):
 
 @dp.message(UserStates.admin_remove_player)
 async def process_remove_player(message: Message, state: FSMContext):
-    player_name = message.text.strip()
+    search_name = normalize_name(message.text.strip())
     
-    if db.remove_player(player_name):
+    # Ищем игрока с учетом е/ё
+    found_player = None
+    for name in players_rating:
+        if normalize_name(name) == search_name:
+            found_player = name
+            break
+    
+    if found_player and db.remove_player(found_player):
         # Обновляем кэш
-        if player_name in players_rating:
-            del players_rating[player_name]
+        if found_player in players_rating:
+            del players_rating[found_player]
         
         await message.answer(
-            f"✅ Игрок '{player_name}' удален из базы",
+            f"✅ Игрок '{found_player}' удален из базы",
             reply_markup=get_admin_keyboard()
         )
     else:
         await message.answer(
-            f"❌ Игрок '{player_name}' не найден в базе",
+            f"❌ Игрок не найден в базе",
             reply_markup=get_admin_keyboard()
         )
     
@@ -521,7 +556,11 @@ async def process_player_card(message: Message):
 # ========== ОСНОВНЫЕ ФУНКЦИИ БОТА ==========
 
 @dp.message(Command("start"))
-async def start_handler(message: Message):
+async def start_handler(message: Message, command: CommandObject):
+    # Игнорируем повторные вызовы /start с параметрами
+    if command.args:
+        return
+    
     welcome_text = (
         "♥️♣️ Добро пожаловать в MagnumPoker ♦️♠️\n\n"
         "Выберите действие:"
@@ -537,14 +576,14 @@ async def my_rating_handler(message: Message, state: FSMContext):
 # Поиск рейтинга по имени + отправка карточки
 @dp.message(UserStates.waiting_for_player_name)
 async def process_player_name(message: Message, state: FSMContext):
-    search_name = message.text.strip().lower()
+    search_name = normalize_name(message.text.strip())
     
     found_player = None
     
-    # Поиск игрока (регистронезависимый)
+    # Поиск игрока (регистронезависимый с учетом ё/е)
     # 1. Сначала ищем точное совпадение
     for name in players_rating:
-        if name.lower() == search_name:
+        if normalize_name(name) == search_name:
             found_player = name
             break
     
@@ -552,15 +591,16 @@ async def process_player_name(message: Message, state: FSMContext):
     if not found_player:
         for name in players_rating:
             # Разбиваем имя на слова и ищем совпадение с любым словом
-            name_words = name.lower().split()
-            if any(search_name in word or word in search_name for word in name_words):
+            name_words = normalize_name(name).split()
+            search_words = search_name.split()
+            if any(any(sw in nw or nw in sw for nw in name_words) for sw in search_words):
                 found_player = name
                 break
     
     # 3. Если все еще не нашли, ищем по подстроке
     if not found_player:
         for name in players_rating:
-            if search_name in name.lower():
+            if search_name in normalize_name(name):
                 found_player = name
                 break
     
@@ -593,20 +633,20 @@ async def process_player_name(message: Message, state: FSMContext):
         # Показываем похожих игроков для помощи
         similar_players = []
         for name in players_rating:
-            if search_name and (search_name in name.lower() or any(word.startswith(search_name) for word in name.lower().split())):
+            if search_name and (search_name in normalize_name(name) or any(word.startswith(search_name) for word in normalize_name(name).split())):
                 similar_players.append(name)
         
         if similar_players:
             similar_text = "\n".join([f"• {name}" for name in similar_players[:3]])
             await message.answer(
-                f"❌ Игрок '{search_name}' не найден.\n\n"
+                f"❌ Игрок '{message.text.strip()}' не найден.\n\n"
                 f"💡 Возможно вы искали:\n{similar_text}\n\n"
                 "Попробуйте ввести другое имя или обратитесь к администратору.",
                 reply_markup=get_main_keyboard(message.from_user.id)
             )
         else:
             await message.answer(
-                f"❌ Игрок '{search_name}' не найден.\n"
+                f"❌ Игрок '{message.text.strip()}' не найден.\n"
                 "Проверьте имя или обратитесь к администратору.",
                 reply_markup=get_main_keyboard(message.from_user.id)
             )
@@ -627,27 +667,27 @@ async def full_rating_handler(message: Message):
 # Обработка кнопки "Правила покера"
 @dp.message(F.text == "📚 Правила покера")
 async def rules_handler(message: Message):
-    rules_text = """🎯 **Краткие правила покера (Техасский Холдем)** 🎯
+    rules_text = """🎯 <b>Краткие правила покера (Техасский Холдем)</b> 🎯
 
-**Цель игры:** собрать наилучшую покерную комбинацию из 5 карт, используя свои 2 карты на руках и 5 общих карт на столе.
+<b>Цель игры:</b> собрать наилучшую покерную комбинацию из 5 карт, используя свои 2 карты и 5 общих карт на столе.
 
-**Как играть:**
+<b>Как играть:</b>
 1. Игроки получают по 2 карты (в закрытую)
 2. На стол выкладываются 5 общих карт в 3 этапа:
-   - Флоп (3 карты)
-   - Терн (1 карта)
-   - Ривер (1 карта)
+   • Флоп (3 карты)
+   • Терн (1 карта) 
+   • Ривер (1 карта)
 3. После каждого этапа - торги
 4. В финале - вскрытие карт и определение победителя
 
-**Важно:** Вы можете использовать:
-- Только свои 2 карты
-- Только карты со стола  
-- Любую комбинацию своих карт и карт со стола
+<b>Важно:</b> Вы можете использовать:
+• Только свои 2 карты
+• Только карты со стола  
+• Любую комбинацию своих карт и карт со стола
 
-🃏 **Комбинации (от старшей к младшей):**
+🃏 <b>Комбинации (от старшей к младшей):</b>
 
-Советую пройти **мини-тест по покеру** 🎲 чтобы закрепить знания о комбинациях!
+🎮 <b>Советую пройти мини-тест по покеру</b> чтобы закрепить знания о комбинациях!
 """
     
     try:
@@ -657,11 +697,16 @@ async def rules_handler(message: Message):
         await message.answer_photo(
             photo_url,
             caption=rules_text,
+            parse_mode="HTML",
             reply_markup=get_main_keyboard(message.from_user.id)
         )
     except Exception as e:
         # Если фото не загружается, отправляем только текст
-        await message.answer(rules_text, reply_markup=get_main_keyboard(message.from_user.id))
+        await message.answer(
+            rules_text, 
+            parse_mode="HTML",
+            reply_markup=get_main_keyboard(message.from_user.id)
+        )
 
 # Обработка кнопки "Тест по покеру"
 @dp.message(F.text == "🎮 Тест по покеру")
@@ -764,7 +809,7 @@ async def main_menu_handler(message: Message):
 
 async def main():
     logging.basicConfig(level=logging.INFO)
-    logging.info("🤖 Бот запущен с PostgreSQL и всеми командами управления БД!")
+    logging.info("🤖 Бот запущен с исправлениями е/ё и красивыми правилами!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
