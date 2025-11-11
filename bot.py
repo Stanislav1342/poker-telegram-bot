@@ -560,27 +560,22 @@ async def process_player_card(message: Message):
 
 @dp.message(Command("start"))
 async def start_handler(message: Message, command: CommandObject):
-    user_id = message.from_user.id
-    current_time = message.date.timestamp()
-    
     # Игнорируем повторные вызовы /start с параметрами
     if command.args:
         return
     
+    user_id = message.from_user.id
+    current_time = message.date.timestamp()
+    
     # Проверяем, не обрабатывали ли мы недавно этот start
     if user_id in processed_starts:
         last_time = processed_starts[user_id]
-        # Если прошло меньше 2 секунд - игнорируем повторный вызов
-        if current_time - last_time < 2:
+        # Если прошло меньше 3 секунд - игнорируем повторный вызов
+        if current_time - last_time < 3:
             return
     
     # Сохраняем время обработки
     processed_starts[user_id] = current_time
-    
-    # Очищаем старые записи (чтобы не накапливались)
-    cleanup_time = current_time - 10  # 10 секунд назад
-    global processed_starts
-    processed_starts = {uid: time for uid, time in processed_starts.items() if time > cleanup_time}
     
     welcome_text = (
         "♥️♣️ Добро пожаловать в MagnumPoker ♦️♠️\n\n"
@@ -831,6 +826,25 @@ async def main_menu_handler(message: Message):
 async def main():
     logging.basicConfig(level=logging.INFO)
     logging.info("🤖 Бот запущен с исправлениями е/ё и красивыми правилами!")
+    await dp.start_polling(bot)
+
+async def cleanup_processed_starts():
+    """Очистка старых записей в processed_starts"""
+    while True:
+        await asyncio.sleep(60)  # Проверяем каждую минуту
+        current_time = asyncio.get_event_loop().time()
+        # Удаляем записи старше 5 минут
+        global processed_starts
+        processed_starts = {uid: time for uid, time in processed_starts.items() 
+                          if current_time - time < 300}
+
+async def main():
+    logging.basicConfig(level=logging.INFO)
+    logging.info("🤖 Бот запущен с исправлениями е/ё и красивыми правилами!")
+    
+    # Запускаем фоновую задачу для очистки
+    asyncio.create_task(cleanup_processed_starts())
+    
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
