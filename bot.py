@@ -127,22 +127,25 @@ async def db_check_handler(message: Message):
         return
     
     try:
+        # ОБНОВЛЯЕМ данные из базы перед показом статистики
+        global players_rating, player_photo_ids
+        players_rating = db.get_all_players()
+        player_photo_ids = db.get_all_cards()
+        
         total_players = len(players_rating)
         total_cards = len(player_photo_ids)
         
-        # Проверяем подключение к БД
-        test_query = db.get_all_players() is not None
-        
         status_text = "🟢 БАЗА ДАННЫХ РАБОТАЕТ\n\n"
-        status_text += f"📊 Статистика:\n"
+        status_text += f"📊 Статистика (актуальная):\n"
         status_text += f"• Игроков в базе: {total_players}\n"
         status_text += f"• Карточек в базе: {total_cards}\n"
-        status_text += f"• Подключение к PostgreSQL: {'✅ Активно' if test_query else '❌ Ошибка'}\n\n"
+        status_text += f"• Подключение к PostgreSQL: ✅ Активно\n\n"
         
         if players_rating:
             status_text += "📋 Топ игроков:\n"
             for i, (name, rating) in enumerate(list(players_rating.items())[:5], 1):
-                status_text += f"{i}. {name}: {rating}\n"
+                has_card = "🖼" if name in player_photo_ids else "❌"
+                status_text += f"{i}. {name}: {rating} {has_card}\n"
         else:
             status_text += "📋 База игроков пуста\n"
         
@@ -281,18 +284,38 @@ async def my_rating_handler(message: Message, state: FSMContext):
 # Поиск рейтинга по имени + отправка карточки
 @dp.message(UserStates.waiting_for_player_name)
 async def process_player_name(message: Message, state: FSMContext):
-    player_name = message.text.strip()
+    search_name = message.text.strip().lower()
     
     found_player = None
+    
+    # Поиск игрока (регистронезависимый)
+    # 1. Сначала ищем точное совпадение
     for name in players_rating:
-        if name.lower() == player_name.lower():
+        if name.lower() == search_name:
             found_player = name
             break
+    
+    # 2. Если точного совпадения нет, ищем по части имени
+    if not found_player:
+        for name in players_rating:
+            # Разбиваем имя на слова и ищем совпадение с любым словом
+            name_words = name.lower().split()
+            if any(search_name in word or word in search_name for word in name_words):
+                found_player = name
+                break
+    
+    # 3. Если все еще не нашли, ищем по подстроке
+    if not found_player:
+        for name in players_rating:
+            if search_name in name.lower():
+                found_player = name
+                break
     
     if found_player:
         rating = players_rating[found_player]
         position = get_player_position(found_player)
         
+        # ОБНОВЛЯЕМ данные карточек перед показом
         file_id = db.get_player_card(found_player)
         if file_id:
             try:
@@ -314,11 +337,26 @@ async def process_player_name(message: Message, state: FSMContext):
                 reply_markup=get_main_keyboard(message.from_user.id)
             )
     else:
-        await message.answer(
-            f"❌ Игрок '{player_name}' не найден.\n"
-            "Проверьте имя или обратитесь к администратору.",
-            reply_markup=get_main_keyboard(message.from_user.id)
-        )
+        # Показываем похожих игроков для помощи
+        similar_players = []
+        for name in players_rating:
+            if search_name and (search_name in name.lower() or any(word.startswith(search_name) for word in name.lower().split())):
+                similar_players.append(name)
+        
+        if similar_players:
+            similar_text = "\n".join([f"• {name}" for name in similar_players[:3]])
+            await message.answer(
+                f"❌ Игрок '{search_name}' не найден.\n\n"
+                f"💡 Возможно вы искали:\n{similar_text}\n\n"
+                "Попробуйте ввести другое имя или обратитесь к администратору.",
+                reply_markup=get_main_keyboard(message.from_user.id)
+            )
+        else:
+            await message.answer(
+                f"❌ Игрок '{search_name}' не найден.\n"
+                "Проверьте имя или обратитесь к администратору.",
+                reply_markup=get_main_keyboard(message.from_user.id)
+            )
     
     await state.clear()
 
@@ -575,9 +613,14 @@ async def process_player_card(message: Message):
     
     photo = message.photo[-1]
     if db.save_player_card(player_name, photo.file_id):
+        # ОБНОВЛЯЕМ кэш карточек сразу после загрузки
+        global player_photo_ids
+        player_photo_ids = db.get_all_cards()
+        
         await message.answer(
-            f"✅ Карточка для игрока '{player_name}' успешно загружена и сохранена!\n"
-            f"📸 Теперь игроки смогут получать эту карточку даже после перезапуска бота.",
+            f"✅ Карточка для игрока '{player_name}' успешно загружена!\n"
+            f"📸 Теперь игроки смогут получать эту карточку.\n"
+            f"🔄 Статистика БД обновлена автоматически.",
             reply_markup=get_admin_keyboard()
         )
     else:
