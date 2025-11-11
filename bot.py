@@ -8,7 +8,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, Message
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from dotenv import load_dotenv
-from database import db  # ✅ Импортируем SQLite базу
+from database import db  # ✅ Импортируем PostgreSQL базу
 
 load_dotenv()
 
@@ -451,7 +451,7 @@ async def stats_handler(message: Message):
         f"👤 Всего игроков: {total_players}\n"
         f"🖼 Игроков с карточками: {players_with_cards}\n"
         f"📈 Загружено карточек: {players_with_cards}/{total_players}\n\n"
-        f"💾 Данные сохраняются в SQLite базе\n"
+        f"💾 Данные сохраняются в PostgreSQL\n"
         f"🔄 Перезапуск бота не удалит данные!"
     )
     
@@ -472,7 +472,7 @@ async def main_menu_handler(message: Message):
 
 async def main():
     logging.basicConfig(level=logging.INFO)
-    logging.info("🤖 Бот запущен с SQLite базой данных!")
+    logging.info("🤖 Бот запущен с PostgreSQL (pg8000)!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
