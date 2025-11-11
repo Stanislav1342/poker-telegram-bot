@@ -117,7 +117,157 @@ def get_test_keyboard(question_index):
     keyboard.adjust(1)
     return keyboard.as_markup(resize_keyboard=True)
 
-# ========== КОМАНДА ПРОВЕРКИ БАЗЫ ДАННЫХ ==========
+# ========== КОМАНДЫ ДЛЯ УПРАВЛЕНИЯ БАЗОЙ ДАННЫХ ==========
+
+@dp.message(Command("db_init"))
+async def db_init_handler(message: Message):
+    """Создание таблиц в базе данных"""
+    if not is_admin(message.from_user.id):
+        return
+    
+    try:
+        # Переинициализируем базу данных
+        db.init_db()
+        
+        await message.answer(
+            "✅ Таблицы в базе данных созданы/проверены!\n\n"
+            "Теперь используйте:\n"
+            "/db_tables - посмотреть таблицы\n" 
+            "/db_check - проверить состояние БД"
+        )
+        
+    except Exception as e:
+        await message.answer(f"❌ Ошибка создания таблиц: {e}")
+
+@dp.message(Command("db_tables"))
+async def db_tables_handler(message: Message):
+    """Показать все таблицы в базе данных"""
+    if not is_admin(message.from_user.id):
+        return
+    
+    try:
+        cursor = db.conn.cursor()
+        cursor.execute("""
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public'
+            ORDER BY table_name
+        """)
+        tables = [row[0] for row in cursor.fetchall()]
+        cursor.close()
+        
+        if tables:
+            tables_text = "📋 ТАБЛИЦЫ В БАЗЕ ДАННЫХ:\n\n"
+            for table in tables:
+                tables_text += f"• {table}\n"
+        else:
+            tables_text = "📭 В базе данных нет таблиц\n\nИспользуйте /db_init для создания"
+        
+        await message.answer(tables_text)
+        
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+
+@dp.message(Command("db_stats"))
+async def db_stats_handler(message: Message):
+    """Подробная статистика базы данных"""
+    if not is_admin(message.from_user.id):
+        return
+    
+    try:
+        cursor = db.conn.cursor()
+        
+        # Количество записей в players
+        cursor.execute("SELECT COUNT(*) FROM players")
+        players_count = cursor.fetchone()[0]
+        
+        # Количество записей в player_cards
+        cursor.execute("SELECT COUNT(*) FROM player_cards")
+        cards_count = cursor.fetchone()[0]
+        
+        # Размер базы данных
+        cursor.execute("SELECT pg_size_pretty(pg_database_size('railway'))")
+        db_size = cursor.fetchone()[0]
+        
+        # Время работы базы
+        cursor.execute("SELECT NOW() - pg_postmaster_start_time()")
+        uptime = cursor.fetchone()[0]
+        
+        cursor.close()
+        
+        stats_text = "📊 ПОДРОБНАЯ СТАТИСТИКА БАЗЫ ДАННЫХ:\n\n"
+        stats_text += f"🗃️ Размер базы: {db_size}\n"
+        stats_text += f"⏱️ Время работы: {str(uptime).split('.')[0]}\n\n"
+        stats_text += f"👤 Игроков в БД: {players_count}\n"
+        stats_text += f"🖼 Карточек в БД: {cards_count}\n\n"
+        stats_text += f"💾 Игроков в кэше: {len(players_rating)}\n"
+        stats_text += f"📸 Карточек в кэше: {len(player_photo_ids)}"
+        
+        await message.answer(stats_text)
+        
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}\n\nВозможно таблицы не созданы. Используйте /db_init")
+
+@dp.message(Command("force_check"))
+async def force_check_handler(message: Message):
+    """Принудительная проверка и создание таблиц"""
+    if not is_admin(message.from_user.id):
+        return
+    
+    try:
+        # Принудительно создаем таблицы
+        db.init_db()
+        
+        # Проверяем что таблицы есть
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
+        tables = [row[0] for row in cursor.fetchall()]
+        cursor.close()
+        
+        # Добавляем тестовую запись
+        test_added = db.add_player("ТестовыйИгрок", 4.0)
+        
+        check_text = "🔍 РЕЗУЛЬТАТ ПРОВЕРКИ:\n\n"
+        check_text += f"📋 Таблицы в БД: {tables}\n"
+        check_text += f"✅ Тестовый игрок добавлен: {test_added}\n"
+        
+        if "players" in tables and "player_cards" in tables:
+            check_text += "🎉 Таблицы созданы и работают!\n"
+        else:
+            check_text += "❌ Проблема с созданием таблиц\n"
+            
+        await message.answer(check_text)
+        
+    except Exception as e:
+        await message.answer(f"❌ Критическая ошибка: {e}")
+
+@dp.message(Command("debug_data"))
+async def debug_data_handler(message: Message):
+    """Отладочная информация о данных"""
+    if not is_admin(message.from_user.id):
+        return
+    
+    debug_text = "🐛 ОТЛАДОЧНАЯ ИНФОРМАЦИЯ:\n\n"
+    
+    debug_text += "💾 ДАННЫЕ В ПАМЯТИ:\n"
+    debug_text += f"• players_rating: {players_rating}\n"
+    debug_text += f"• player_photo_ids: {player_photo_ids}\n\n"
+    
+    # Проверяем подключение к БД
+    try:
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM players")
+        db_players_count = cursor.fetchone()[0]
+        cursor.close()
+        
+        debug_text += f"🗄️ ДАННЫЕ В POSTGRESQL:\n"
+        debug_text += f"• Игроков в БД: {db_players_count}\n"
+        
+    except Exception as e:
+        debug_text += f"🗄️ POSTGRESQL: ❌ Ошибка - {e}\n"
+    
+    await message.answer(debug_text)
+
 @dp.message(Command("db_check"))
 @dp.message(F.text == "📊 Статистика БД")
 async def db_check_handler(message: Message):
@@ -154,7 +304,73 @@ async def db_check_handler(message: Message):
     except Exception as e:
         await message.answer(f"🔴 ОШИБКА БАЗЫ ДАННЫХ:\n{str(e)}")
 
-# ========== РЕДАКТИРОВАНИЕ РЕЙТИНГА ==========
+# ========== ОСНОВНЫЕ АДМИН КОМАНДЫ ==========
+
+@dp.message(Command("admin"))
+@dp.message(F.text == "👑 Админ-панель")
+async def admin_handler(message: Message):
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ Доступ запрещен")
+        return
+    
+    await message.answer(
+        "👑 Панель администратора:",
+        reply_markup=get_admin_keyboard()
+    )
+
+# Добавление игрока (админ)
+@dp.message(F.text == "➕ Добавить игрока")
+async def add_player_handler(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    await message.answer(
+        "Введите данные игрока в формате:\n"
+        "Имя Фамилия Рейтинг\n\n"
+        "Пример: Иван Рунге 4.4\n"
+        "Или: Стас 4.2\n"
+        "Или: Анна Мария 4.8\n\n"
+        "Рейтинг по 5-балльной шкале"
+    )
+    await state.set_state(UserStates.admin_add_player)
+
+@dp.message(UserStates.admin_add_player)
+async def process_add_player(message: Message, state: FSMContext):
+    try:
+        # Разделяем сообщение на части
+        parts = message.text.split()
+        if len(parts) < 2:
+            await message.answer("❌ Неверный формат. Пример: Иван Рунге 4.4")
+            return
+        
+        # Последняя часть - рейтинг, остальные - имя игрока
+        rating_str = parts[-1].replace(',', '.')
+        player_name = ' '.join(parts[:-1])
+        
+        rating = float(rating_str)
+        
+        if rating < 0 or rating > 5:
+            await message.answer("❌ Рейтинг должен быть от 0 до 5")
+            return
+        
+        # Сохраняем в базу данных
+        if db.add_player(player_name, rating):
+            players_rating[player_name] = rating
+            await message.answer(
+                f"✅ Игрок добавлен:\n👤 {player_name}\n⭐️ Рейтинг: {rating}",
+                reply_markup=get_admin_keyboard()
+            )
+        else:
+            await message.answer("❌ Ошибка при добавлении игрока в базу")
+        
+    except ValueError:
+        await message.answer("❌ Рейтинг должен быть числом. Пример: Иван Рунге 4.4")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+    
+    await state.clear()
+
+# Редактирование рейтинга
 @dp.message(F.text == "✏️ Изменить рейтинг")
 async def update_rating_handler(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
@@ -214,59 +430,96 @@ async def process_update_rating(message: Message, state: FSMContext):
     
     await state.clear()
 
-# ========== ОБНОВЛЕННОЕ ДОБАВЛЕНИЕ ИГРОКА (с поддержкой нескольких слов) ==========
-@dp.message(F.text == "➕ Добавить игрока")
-async def add_player_handler(message: Message, state: FSMContext):
+# Удаление игрока (админ)
+@dp.message(F.text == "🗑 Удалить игрока")
+async def remove_player_handler(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    if not players_rating:
+        await message.answer("❌ В базе нет игроков для удаления")
+        return
+    
+    players_list = "\n".join([f"• {name}" for name in players_rating.keys()])
+    await message.answer(
+        f"📋 Список игроков:\n{players_list}\n\n"
+        "Введите имя игрока для удаления:"
+    )
+    await state.set_state(UserStates.admin_remove_player)
+
+@dp.message(UserStates.admin_remove_player)
+async def process_remove_player(message: Message, state: FSMContext):
+    player_name = message.text.strip()
+    
+    if db.remove_player(player_name):
+        # Обновляем кэш
+        if player_name in players_rating:
+            del players_rating[player_name]
+        
+        await message.answer(
+            f"✅ Игрок '{player_name}' удален из базы",
+            reply_markup=get_admin_keyboard()
+        )
+    else:
+        await message.answer(
+            f"❌ Игрок '{player_name}' не найден в базе",
+            reply_markup=get_admin_keyboard()
+        )
+    
+    await state.clear()
+
+# Загрузка карточки игрока (админ)
+@dp.message(F.text == "📤 Загрузить карточку")
+async def upload_card_handler(message: Message):
     if not is_admin(message.from_user.id):
         return
     
     await message.answer(
-        "Введите данные игрока в формате:\n"
-        "Имя Фамилия Рейтинг\n\n"
-        "Пример: Иван Рунге 4.4\n"
-        "Или: Стас 4.2\n"
-        "Или: Анна Мария 4.8\n\n"
-        "Рейтинг по 5-балльной шкале"
+        "Отправьте карточку игрока как фото с подписью в формате:\n"
+        "Имя_игрока\n\n"
+        "Пример подписи к фото: Рунге"
     )
-    await state.set_state(UserStates.admin_add_player)
 
-@dp.message(UserStates.admin_add_player)
-async def process_add_player(message: Message, state: FSMContext):
-    try:
-        # Разделяем сообщение на части
-        parts = message.text.split()
-        if len(parts) < 2:
-            await message.answer("❌ Неверный формат. Пример: Иван Рунге 4.4")
-            return
-        
-        # Последняя часть - рейтинг, остальные - имя игрока
-        rating_str = parts[-1].replace(',', '.')
-        player_name = ' '.join(parts[:-1])
-        
-        rating = float(rating_str)
-        
-        if rating < 0 or rating > 5:
-            await message.answer("❌ Рейтинг должен быть от 0 до 5")
-            return
-        
-        # Сохраняем в базу данных
-        if db.add_player(player_name, rating):
-            players_rating[player_name] = rating
-            await message.answer(
-                f"✅ Игрок добавлен:\n👤 {player_name}\n⭐️ Рейтинг: {rating}",
-                reply_markup=get_admin_keyboard()
-            )
-        else:
-            await message.answer("❌ Ошибка при добавлении игрока в базу")
-        
-    except ValueError:
-        await message.answer("❌ Рейтинг должен быть числом. Пример: Иван Рунге 4.4")
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}")
+# Обработка загруженной карточки
+@dp.message(F.photo)
+async def process_player_card(message: Message):
+    if not is_admin(message.from_user.id):
+        return
     
-    await state.clear()
+    if not message.caption:
+        await message.answer("❌ Добавьте подпись с именем игрока")
+        return
+    
+    player_name = message.caption.strip()
+    
+    if player_name not in players_rating:
+        await message.answer(
+            f"❌ Игрок '{player_name}' не найден в базе.\n"
+            f"Сначала добавьте игрока через '➕ Добавить игрока'.",
+            reply_markup=get_admin_keyboard()
+        )
+        return
+    
+    photo = message.photo[-1]
+    if db.save_player_card(player_name, photo.file_id):
+        # ОБНОВЛЯЕМ кэш карточек сразу после загрузки
+        global player_photo_ids
+        player_photo_ids = db.get_all_cards()
+        
+        await message.answer(
+            f"✅ Карточка для игрока '{player_name}' успешно загружена!\n"
+            f"📸 Теперь игроки смогут получать эту карточку.\n"
+            f"🔄 Статистика БД обновлена автоматически.",
+            reply_markup=get_admin_keyboard()
+        )
+    else:
+        await message.answer(
+            f"❌ Ошибка при сохранении карточки в базу данных",
+            reply_markup=get_admin_keyboard()
+        )
 
-# ========== ОСТАЛЬНЫЕ ФУНКЦИИ (без изменений) ==========
+# ========== ОСНОВНЫЕ ФУНКЦИИ БОТА ==========
+
 @dp.message(Command("start"))
 async def start_handler(message: Message):
     welcome_text = (
@@ -480,175 +733,6 @@ async def finish_test(message: Message, state: FSMContext):
     await message.answer(result_text, reply_markup=get_main_keyboard(user_id))
     await state.clear()
 
-# Админ команды
-@dp.message(Command("admin"))
-@dp.message(F.text == "👑 Админ-панель")
-async def admin_handler(message: Message):
-    if not is_admin(message.from_user.id):
-        await message.answer("❌ Доступ запрещен")
-        return
-    
-    await message.answer(
-        "👑 Панель администратора:",
-        reply_markup=get_admin_keyboard()
-    )
-
-# Добавление игрока (админ)
-@dp.message(F.text == "➕ Добавить игрока")
-async def add_player_handler(message: Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
-    
-    await message.answer(
-        "Введите данные игрока в формате:\n"
-        "Имя Рейтинг\n\n"
-        "Пример: Стас 4.4\n"
-        "Или: Стас 4,4\n\n"
-        "Рейтинг по 5-балльной шкале"
-    )
-    await state.set_state(UserStates.admin_add_player)
-
-# Обработка добавления игрока
-@dp.message(UserStates.admin_add_player)
-async def process_add_player(message: Message, state: FSMContext):
-    try:
-        data = message.text.split()
-        if len(data) != 2:
-            await message.answer("❌ Неверный формат. Пример: Стас 4.4")
-            return
-        
-        name = data[0]
-        rating_str = data[1].replace(',', '.')
-        rating = float(rating_str)
-        
-        if rating < 0 or rating > 5:
-            await message.answer("❌ Рейтинг должен быть от 0 до 5")
-            return
-        
-        if db.add_player(name, rating):
-            players_rating[name] = rating
-            await message.answer(
-                f"✅ Игрок добавлен:\n👤 {name}\n⭐️ Рейтинг: {rating}",
-                reply_markup=get_admin_keyboard()
-            )
-        else:
-            await message.answer("❌ Ошибка при добавлении игрока в базу")
-        
-    except ValueError:
-        await message.answer("❌ Рейтинг должен быть числом. Пример: Стас 4.4 или Стас 4,4")
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}")
-    
-    await state.clear()
-
-# Удаление игрока (админ)
-@dp.message(F.text == "🗑 Удалить игрока")
-async def remove_player_handler(message: Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
-    
-    if not players_rating:
-        await message.answer("❌ В базе нет игроков для удаления")
-        return
-    
-    players_list = "\n".join([f"• {name}" for name in players_rating.keys()])
-    await message.answer(
-        f"📋 Список игроков:\n{players_list}\n\n"
-        "Введите имя игрока для удаления:"
-    )
-    await state.set_state(UserStates.admin_remove_player)
-
-# Обработка удаления игрока
-@dp.message(UserStates.admin_remove_player)
-async def process_remove_player(message: Message, state: FSMContext):
-    player_name = message.text.strip()
-    
-    if db.remove_player(player_name):
-        if player_name in players_rating:
-            del players_rating[player_name]
-        
-        await message.answer(
-            f"✅ Игрок '{player_name}' удален из базы",
-            reply_markup=get_admin_keyboard()
-        )
-    else:
-        await message.answer(
-            f"❌ Игрок '{player_name}' не найден в базе",
-            reply_markup=get_admin_keyboard()
-        )
-    
-    await state.clear()
-
-# Загрузка карточки игрока (админ)
-@dp.message(F.text == "📤 Загрузить карточку")
-async def upload_card_handler(message: Message):
-    if not is_admin(message.from_user.id):
-        return
-    
-    await message.answer(
-        "Отправьте карточку игрока как фото с подписью в формате:\n"
-        "Имя_игрока\n\n"
-        "Пример подписи к фото: Рунге"
-    )
-
-# Обработка загруженной карточки
-@dp.message(F.photo)
-async def process_player_card(message: Message):
-    if not is_admin(message.from_user.id):
-        return
-    
-    if not message.caption:
-        await message.answer("❌ Добавьте подпись с именем игрока")
-        return
-    
-    player_name = message.caption.strip()
-    
-    if player_name not in players_rating:
-        await message.answer(
-            f"❌ Игрок '{player_name}' не найден в базе.\n"
-            f"Сначала добавьте игрока через '➕ Добавить игрока'.",
-            reply_markup=get_admin_keyboard()
-        )
-        return
-    
-    photo = message.photo[-1]
-    if db.save_player_card(player_name, photo.file_id):
-        # ОБНОВЛЯЕМ кэш карточек сразу после загрузки
-        global player_photo_ids
-        player_photo_ids = db.get_all_cards()
-        
-        await message.answer(
-            f"✅ Карточка для игрока '{player_name}' успешно загружена!\n"
-            f"📸 Теперь игроки смогут получать эту карточку.\n"
-            f"🔄 Статистика БД обновлена автоматически.",
-            reply_markup=get_admin_keyboard()
-        )
-    else:
-        await message.answer(
-            f"❌ Ошибка при сохранении карточки в базу данных",
-            reply_markup=get_admin_keyboard()
-        )
-
-# Команда для просмотра статистики (админ)
-@dp.message(F.text == "📊 Статистика")
-async def stats_handler(message: Message):
-    if not is_admin(message.from_user.id):
-        return
-    
-    total_players = len(players_rating)
-    players_with_cards = len(db.get_all_cards())
-    
-    stats_text = (
-        f"📊 Статистика бота:\n\n"
-        f"👤 Всего игроков: {total_players}\n"
-        f"🖼 Игроков с карточками: {players_with_cards}\n"
-        f"📈 Загружено карточек: {players_with_cards}/{total_players}\n\n"
-        f"💾 Данные сохраняются в PostgreSQL\n"
-        f"🔄 Перезапуск бота не удалит данные!"
-    )
-    
-    await message.answer(stats_text, reply_markup=get_admin_keyboard())
-
 # Вспомогательная функция для определения позиции
 def get_player_position(player_name):
     sorted_players = sorted(players_rating.items(), key=lambda x: x[1], reverse=True)
@@ -664,7 +748,7 @@ async def main_menu_handler(message: Message):
 
 async def main():
     logging.basicConfig(level=logging.INFO)
-    logging.info("🤖 Бот запущен с PostgreSQL (pg8000)!")
+    logging.info("🤖 Бот запущен с PostgreSQL и всеми командами управления БД!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
