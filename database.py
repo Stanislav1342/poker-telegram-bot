@@ -27,7 +27,7 @@ class Database:
                 host=host,
                 port=port,
                 database=database,
-                timeout=30  # Увеличиваем таймаут
+                timeout=30
             )
             logging.info("✅ Подключение к PostgreSQL установлено")
         except Exception as e:
@@ -83,6 +83,24 @@ class Database:
             return True
         except Exception as e:
             logging.error(f"❌ Ошибка добавления игрока: {e}")
+            return False
+    
+    def update_player_rating(self, name, new_rating):
+        """Обновление рейтинга игрока"""
+        try:
+            if not self.conn:
+                return False
+            
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "UPDATE players SET rating = %s WHERE name = %s",
+                (new_rating, name)
+            )
+            self.conn.commit()
+            cursor.close()
+            return cursor.rowcount > 0  # Возвращает True если игрок был обновлен
+        except Exception as e:
+            logging.error(f"❌ Ошибка обновления рейтинга: {e}")
             return False
     
     def remove_player(self, name):
