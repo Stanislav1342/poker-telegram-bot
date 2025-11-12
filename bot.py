@@ -301,7 +301,7 @@ async def db_check_handler(message: Message):
         
         if players_rating:
             status_text += "📋 Топ игроков:\n"
-            for i, (name, rating) in enumerate(list(players_rating.items())[:5], 1):
+            for i, (name, rating) in enumerate(list(players_rating.items()), 1):
                 has_card = "🖼" if name in player_photo_ids else "❌"
                 status_text += f"{i}. {name}: {rating} {has_card}\n"
         else:
@@ -582,7 +582,7 @@ async def start_handler(message: Message, command: CommandObject):
         "Выберите действие:"
     )
     await message.answer(welcome_text, reply_markup=get_main_keyboard(message.from_user.id))
-    
+
 # Обработка кнопки "Мой рейтинг"
 @dp.message(F.text == "🎯 Мой рейтинг")
 async def my_rating_handler(message: Message, state: FSMContext):
