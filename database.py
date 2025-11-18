@@ -41,7 +41,18 @@ class Database:
             
             cursor = self.conn.cursor()
             
-            # Таблица игроков
+            # ★★★ НОВАЯ ТАБЛИЦА: пользователи бота ★★★
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS bot_users (
+                    user_id BIGINT PRIMARY KEY,
+                    username VARCHAR(100),
+                    first_name VARCHAR(100),
+                    last_name VARCHAR(100),
+                    registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Существующие таблицы (остаются без изменений)
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS players (
                     id SERIAL PRIMARY KEY,
@@ -51,7 +62,6 @@ class Database:
                 )
             ''')
             
-            # Таблица карточек игроков
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS player_cards (
                     id SERIAL PRIMARY KEY,
@@ -61,7 +71,6 @@ class Database:
                 )
             ''')
             
-            # Таблица игр
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS games (
                     id SERIAL PRIMARY KEY,
@@ -77,7 +86,6 @@ class Database:
                 )
             ''')
             
-            # Таблица записей на игру
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS game_registrations (
                     id SERIAL PRIMARY KEY,
@@ -100,6 +108,58 @@ class Database:
                     self.conn.rollback()
             except:
                 self.conn = None
+    
+    def save_bot_user(self, user_id, username=None, first_name=None, last_name=None):
+        """Сохранение информации о пользователе бота"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                INSERT INTO bot_users (user_id, username, first_name, last_name) 
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (user_id) DO UPDATE SET 
+                username = EXCLUDED.username,
+                first_name = EXCLUDED.first_name,
+                last_name = EXCLUDED.last_name
+            ''', (user_id, username, first_name, last_name))
+            self.conn.commit()
+            cursor.close()
+            return True
+        except Exception as e:
+            logging.error(f"❌ Ошибка сохранения пользователя бота: {e}")
+            return False
+    
+    def get_all_bot_users(self):
+        """Получение всех пользователей бота"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute('SELECT user_id FROM bot_users')
+            user_ids = [row[0] for row in cursor.fetchall()]
+            cursor.close()
+            return user_ids
+        except Exception as e:
+            logging.error(f"❌ Ошибка получения всех пользователей бота: {e}")
+            return []
+    
+    # ★★★ ОБНОВЛЯЕМ СТАРЫЙ МЕТОД get_all_bot_users ★★★
+    def get_all_game_users(self):
+        """Получение пользователей из игр (старый метод, оставляем для совместимости)"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                SELECT DISTINCT user_id FROM game_registrations 
+                WHERE user_id IS NOT NULL
+                UNION 
+                SELECT DISTINCT created_by FROM games 
+                WHERE created_by IS NOT NULL
+            ''')
+            user_ids = [row[0] for row in cursor.fetchall()]
+            cursor.close()
+            return user_ids
+        except Exception as e:
+            logging.error(f"❌ Ошибка получения пользователей из игр: {e}")
+            return []
+
+    # ★★★ ОСТАЛЬНЫЕ МЕТОДЫ БЕЗ ИЗМЕНЕНИЙ ★★★
     
     def add_player(self, name, rating):
         """Добавление игрока"""
@@ -412,22 +472,6 @@ class Database:
                 pass
             return False
 
-    def get_all_game_registrations(self):
-        """Получение всех записей на игры (для рассылки)"""
-        try:
-            cursor = self.conn.cursor()
-            cursor.execute('''
-                SELECT DISTINCT user_id 
-                FROM game_registrations 
-                WHERE user_id IS NOT NULL
-            ''')
-            user_ids = [row[0] for row in cursor.fetchall()]
-            cursor.close()
-            return user_ids
-        except Exception as e:
-            logging.error(f"❌ Ошибка получения user_id для рассылки: {e}")
-            return []
-
     def get_game_registrations_by_game(self, game_id):
         """Получение user_id записавшихся на конкретную игру"""
         try:
@@ -459,24 +503,6 @@ class Database:
             return registrations
         except Exception as e:
             logging.error(f"❌ Ошибка получения записей пользователя: {e}")
-            return []
-
-    def get_all_bot_users(self):
-        """Получение всех пользователей бота (кто запускал /start)"""
-        try:
-            cursor = self.conn.cursor()
-            cursor.execute('''
-                SELECT DISTINCT user_id FROM game_registrations 
-                WHERE user_id IS NOT NULL
-                UNION 
-                SELECT DISTINCT created_by FROM games 
-                WHERE created_by IS NOT NULL
-            ''')
-            user_ids = [row[0] for row in cursor.fetchall()]
-            cursor.close()
-            return user_ids
-        except Exception as e:
-            logging.error(f"❌ Ошибка получения всех пользователей бота: {e}")
             return []
 
 # Глобальный экземпляр базы данных

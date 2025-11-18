@@ -29,15 +29,17 @@ class UserStates(StatesGroup):
     admin_update_rating = State()
     poker_test = State()
     
-    # новые состояния для игр
+    # состояния для игр
     admin_create_game_name = State()
     admin_create_game_date = State()
     admin_create_game_players = State()
     admin_create_game_location = State()
     admin_remove_player_from_game = State()
     admin_update_game_limit = State()
+    
+    # ★★★ УПРОЩЕННОЕ СОСТОЯНИЕ ДЛЯ РАССЫЛКИ ★★★
     admin_broadcast_message = State()
-    admin_broadcast_photo = State()
+    
     user_register_for_game = State()
     user_select_game = State()
     user_cancel_registration = State()
@@ -199,15 +201,6 @@ def get_test_keyboard(question_index):
     keyboard.adjust(1)
     return keyboard.as_markup(resize_keyboard=True)
 
-# Клавиатура для выбора типа контента рассылки
-def get_broadcast_type_keyboard():
-    keyboard = InlineKeyboardBuilder()
-    keyboard.add(InlineKeyboardButton(text="📝 Текст", callback_data="broadcast_text"))
-    keyboard.add(InlineKeyboardButton(text="🖼 Фото + текст", callback_data="broadcast_photo"))
-    keyboard.add(InlineKeyboardButton(text="❌ Отменить рассылку", callback_data="broadcast_cancel"))
-    keyboard.adjust(1)
-    return keyboard.as_markup()
-
 # ========== КОМАНДЫ ДЛЯ УПРАВЛЕНИЯ БАЗОЙ ДАННЫХ ==========
 
 @dp.message(Command("db_init"))
@@ -246,11 +239,13 @@ async def db_check_handler(message: Message):
         
         total_players = len(players_rating)
         total_cards = len(player_photo_ids)
+        total_bot_users = len(db.get_all_bot_users())
         
         status_text = "🟢 БАЗА ДАННЫХ РАБОТАЕТ\n\n"
         status_text += f"📊 Статистика (актуальная):\n"
         status_text += f"• Игроков в базе: {total_players}\n"
         status_text += f"• Карточек в базе: {total_cards}\n"
+        status_text += f"• Пользователей бота: {total_bot_users}\n"
         status_text += f"• Подключение к PostgreSQL: ✅ Активно\n\n"
         
         if players_rating:
@@ -643,7 +638,7 @@ async def register_game_handler(message: Message, state: FSMContext):
     )
     await state.set_state(UserStates.user_select_game)
 
-# ОБНОВЛЕННАЯ ОБРАБОТКА ВЫБОРА ИГРЫ С ПРОВЕРКОЙ МЕСТ И СООБЩЕНИЕМ ДЛЯ АДМИНА
+# ОБНОВЛЕННАЯ ОБРАБОТКА ВЫБОРА ИГРЫ С ПРОВЕРКОМ МЕСТ И СООБЩЕНИЕМ ДЛЯ АДМИНА
 @dp.callback_query(F.data.startswith("register_"))
 async def process_game_selection(callback: types.CallbackQuery, state: FSMContext):
     try:
@@ -1190,14 +1185,14 @@ async def cancel_specific_game_handler(callback: types.CallbackQuery):
     except (ValueError, IndexError):
         await callback.message.answer("❌ Ошибка при отмене игры")
 
-# ========== НОВАЯ СИСТЕМА РАССЫЛКИ ЧЕРЕЗ КНОПКИ ==========
+# ========== ★★★ УПРОЩЕННАЯ СИСТЕМА РАССЫЛКИ ★★★ ==========
 
 @dp.message(F.text == "📢 Рассылка")
 async def broadcast_handler(message: Message):
     if not is_admin(message.from_user.id):
         return
     
-    # Создаем инлайн-клавиатуру для выбора типа рассылки
+    # Создаем инлайн-клавиатуру для выбора аудитории
     keyboard = InlineKeyboardBuilder()
     keyboard.add(InlineKeyboardButton(text="📢 Всем пользователям бота", callback_data="broadcast_all"))
     keyboard.add(InlineKeyboardButton(text="🎮 По конкретной игре", callback_data="broadcast_game_select"))
@@ -1206,7 +1201,7 @@ async def broadcast_handler(message: Message):
     
     await message.answer(
         "📢 СИСТЕМА РАССЫЛКИ\n\n"
-        "Выберите тип рассылки:",
+        "Выберите аудиторию для рассылки:",
         reply_markup=keyboard.as_markup()
     )
 
@@ -1225,9 +1220,9 @@ async def broadcast_all_handler(callback: types.CallbackQuery, state: FSMContext
     await callback.message.answer(
         f"📢 Рассылка ВСЕМ пользователям бота\n"
         f"👥 Получателей: {len(user_ids)}\n\n"
-        "Выберите тип контента:",
-        reply_markup=get_broadcast_type_keyboard()
+        "Отправьте сообщение для рассылки (текст, фото, или фото с текстом):"
     )
+    await state.set_state(UserStates.admin_broadcast_message)
     await callback.answer()
 
 # Обработка выбора "По конкретной игре"
@@ -1286,46 +1281,20 @@ async def broadcast_specific_game_handler(callback: types.CallbackQuery, state: 
             f"🎮 {game[1]}\n"
             f"📅 {game[2].strftime('%d.%m.%Y %H:%M')}\n"
             f"👥 Получателей: {len(user_ids)}\n\n"
-            "Выберите тип контента:",
-            reply_markup=get_broadcast_type_keyboard()
+            "Отправьте сообщение для рассылки (текст, фото, или фото с текстом):"
         )
+        await state.set_state(UserStates.admin_broadcast_message)
         await callback.answer()
         
     except (ValueError, IndexError):
         await callback.message.answer("❌ Ошибка при выборе игры")
         await callback.answer()
 
-# Обработка выбора типа контента - текст
-@dp.callback_query(F.data == "broadcast_text")
-async def broadcast_text_handler(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.answer(
-        "📝 Введите текст для рассылки:"
-    )
-    await state.set_state(UserStates.admin_broadcast_message)
-    await callback.answer()
-
-# Обработка выбора типа контента - фото
-@dp.callback_query(F.data == "broadcast_photo")
-async def broadcast_photo_handler(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.answer(
-        "🖼 Отправьте фото для рассылки:"
-    )
-    await state.set_state(UserStates.admin_broadcast_photo)
-    await callback.answer()
-
-# Отмена рассылки
-@dp.callback_query(F.data == "broadcast_cancel")
-async def broadcast_cancel_handler(callback: types.CallbackQuery, state: FSMContext):
-    await state.clear()
-    await callback.message.answer(
-        "❌ Рассылка отменена",
-        reply_markup=get_admin_keyboard()
-    )
-    await callback.answer()
-
-# Обработка текстовой рассылки
+# ★★★ УНИВЕРСАЛЬНЫЙ ОБРАБОТЧИК РАССЫЛКИ ★★★
 @dp.message(UserStates.admin_broadcast_message)
-async def process_broadcast_message(message: Message, state: FSMContext):
+async def universal_broadcast_handler(message: Message, state: FSMContext):
+    """Универсальный обработчик для рассылки любого контента"""
+    
     data = await state.get_data()
     user_ids = data.get('user_ids', [])
     broadcast_type = data.get('broadcast_type', 'manual')
@@ -1338,71 +1307,22 @@ async def process_broadcast_message(message: Message, state: FSMContext):
     sent_count = 0
     failed_count = 0
     
-    # Отправляем сообщение всем пользователям
+    # Определяем тип контента и отправляем
     for user_id in user_ids:
         try:
-            await bot.send_message(user_id, f"📢 ОБЪЯВЛЕНИЕ:\n\n{message.text}")
-            sent_count += 1
-            # Небольшая задержка чтобы не превысить лимиты Telegram
-            await asyncio.sleep(0.1)
-        except Exception as e:
-            logging.error(f"❌ Ошибка отправки сообщения пользователю {user_id}: {e}")
-            failed_count += 1
-    
-    # Формируем отчет
-    if broadcast_type == "all":
-        report = f"📢 Рассылка ВСЕМ пользователям бота завершена!\n"
-    elif broadcast_type.startswith("game_"):
-        game_id = broadcast_type.split('_')[1]
-        report = f"📢 Рассылка по игре #{game_id} завершена!\n"
-    else:
-        report = f"📢 Рассылка завершена!\n"
-    
-    report += f"✅ Отправлено: {sent_count}\n"
-    report += f"❌ Не отправлено: {failed_count}\n"
-    report += f"👥 Всего получателей: {len(user_ids)}"
-    
-    await message.answer(report, reply_markup=get_admin_keyboard())
-    await state.clear()
-
-# Обработка фото-рассылки
-@dp.message(UserStates.admin_broadcast_photo)
-async def process_broadcast_photo_handler(message: Message, state: FSMContext):
-    if not message.photo:
-        await message.answer("❌ Пожалуйста, отправьте фото")
-        return
-    
-    await state.update_data(photo_file_id=message.photo[-1].file_id)
-    await message.answer("📝 Теперь введите текст для рассылки (подпись к фото):")
-    await state.set_state(UserStates.admin_broadcast_message)
-
-# Обновляем обработчик для работы с фото
-@dp.message(UserStates.admin_broadcast_message)
-async def process_broadcast_with_photo(message: Message, state: FSMContext):
-    data = await state.get_data()
-    user_ids = data.get('user_ids', [])
-    broadcast_type = data.get('broadcast_type', 'manual')
-    photo_file_id = data.get('photo_file_id')
-    
-    if not user_ids:
-        await message.answer("❌ Нет получателей для рассылки")
-        await state.clear()
-        return
-    
-    sent_count = 0
-    failed_count = 0
-    
-    # Отправляем фото с текстом всем пользователям
-    for user_id in user_ids:
-        try:
-            if photo_file_id:
+            if message.photo:
+                # Отправляем фото с подписью или без
+                photo_file_id = message.photo[-1].file_id
+                caption = message.caption if message.caption else ""
+                
                 await bot.send_photo(
                     user_id, 
                     photo=photo_file_id,
-                    caption=f"📢 ОБЪЯВЛЕНИЕ:\n\n{message.text}"
+                    caption=caption
                 )
             else:
-                await bot.send_message(user_id, f"📢 ОБЪЯВЛЕНИЕ:\n\n{message.text}")
+                # Отправляем текстовое сообщение
+                await bot.send_message(user_id, message.text)
             
             sent_count += 1
             # Небольшая задержка чтобы не превысить лимиты Telegram
@@ -1426,6 +1346,16 @@ async def process_broadcast_with_photo(message: Message, state: FSMContext):
     
     await message.answer(report, reply_markup=get_admin_keyboard())
     await state.clear()
+
+# Отмена рассылки
+@dp.callback_query(F.data == "broadcast_cancel")
+async def broadcast_cancel_handler(callback: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.answer(
+        "❌ Рассылка отменена",
+        reply_markup=get_admin_keyboard()
+    )
+    await callback.answer()
 
 # ========== УДАЛЕНИЕ ВСЕХ ИГР ==========
 
@@ -1581,6 +1511,14 @@ async def start_handler(message: Message, command: CommandObject):
     
     # Сохраняем время обработки
     processed_starts[user_id] = current_time
+    
+    # ★★★ СОХРАНЯЕМ ПОЛЬЗОВАТЕЛЯ В БАЗУ ДАННЫХ ★★★
+    db.save_bot_user(
+        user_id=user_id,
+        username=message.from_user.username,
+        first_name=message.from_user.first_name,
+        last_name=message.from_user.last_name
+    )
     
     welcome_text = (
         "♥️♣️ Добро пожаловать в MagnumPoker ♦️♠️\n\n"
