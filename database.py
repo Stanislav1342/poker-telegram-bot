@@ -83,12 +83,22 @@ class Database:
                     buy_in DECIMAL(10,2) DEFAULT 0.00,
                     location VARCHAR(200),
                     status VARCHAR(20) DEFAULT 'upcoming',
-                    host VARCHAR(100) DEFAULT 'Капоне',
-                    end_time VARCHAR(10) DEFAULT '22:00',
                     created_by INTEGER,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
+            
+            # ★★★ ДОБАВЛЯЕМ КОЛОНКУ HOST ЕСЛИ ЕЁ НЕТ ★★★
+            try:
+                cursor.execute("ALTER TABLE games ADD COLUMN IF NOT EXISTS host VARCHAR(100) DEFAULT 'Капоне'")
+            except Exception as e:
+                logging.info(f"ℹ️ Колонка host уже существует: {e}")
+            
+            # ★★★ ДОБАВЛЯЕМ КОЛОНКУ END_TIME ЕСЛИ ЕЁ НЕТ ★★★
+            try:
+                cursor.execute("ALTER TABLE games ADD COLUMN IF NOT EXISTS end_time VARCHAR(10) DEFAULT '22:00'")
+            except Exception as e:
+                logging.info(f"ℹ️ Колонка end_time уже существует: {e}")
             
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS game_registrations (
@@ -267,6 +277,8 @@ class Database:
     def create_game(self, game_name, game_date, max_players, game_type, buy_in, location, host=None, end_time=None, created_by=None):
         """Создание новой игры"""
         try:
+            logging.info(f"🔄 Создание игры: {game_name}, {game_date}, {max_players}, {buy_in}, {location}, {host}, {end_time}")
+            
             cursor = self.conn.cursor()
             cursor.execute('''
                 INSERT INTO games (game_name, game_date, max_players, game_type, buy_in, location, host, end_time, created_by)
@@ -275,6 +287,8 @@ class Database:
             game_id = cursor.fetchone()[0]
             self.conn.commit()
             cursor.close()
+            
+            logging.info(f"✅ Игра создана с ID: {game_id}")
             return game_id
         except Exception as e:
             logging.error(f"❌ Ошибка создания игры: {e}")
