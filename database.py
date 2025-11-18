@@ -461,5 +461,23 @@ class Database:
             logging.error(f"❌ Ошибка получения записей пользователя: {e}")
             return []
 
+    def get_all_bot_users(self):
+        """Получение всех пользователей бота (кто запускал /start)"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                SELECT DISTINCT user_id FROM game_registrations 
+                WHERE user_id IS NOT NULL
+                UNION 
+                SELECT DISTINCT created_by FROM games 
+                WHERE created_by IS NOT NULL
+            ''')
+            user_ids = [row[0] for row in cursor.fetchall()]
+            cursor.close()
+            return user_ids
+        except Exception as e:
+            logging.error(f"❌ Ошибка получения всех пользователей бота: {e}")
+            return []
+
 # Глобальный экземпляр базы данных
 db = Database()
