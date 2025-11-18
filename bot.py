@@ -386,12 +386,7 @@ async def my_rating_handler(message: Message, state: FSMContext):
         await message.answer("📋 В базе пока нет игроков")
         return
     
-    players_list = "\n".join([f"• {name}" for name in players_rating.keys()])
-    await message.answer(
-        f"👤 Введите ваше игровое имя:\n\n"
-        f"📋 Доступные игроки:\n{players_list}\n\n"
-        f"💡 Можно ввести имя частично или в любом регистре"
-    )
+    await message.answer("Введите ваше игровое имя:")
     await state.set_state(UserStates.waiting_for_player_name)
 
 @dp.message(UserStates.waiting_for_player_name)
@@ -426,7 +421,7 @@ async def process_player_name(message: Message, state: FSMContext):
         # Получаем карточку игрока если есть
         player_card = db.get_player_card(found_player)
         
-        # Формируем текст ответа
+                # Формируем текст ответа
         rating_text = (
             f"👤 {found_player}\n"
             f"⭐️ Рейтинг: {player_rating}\n"
@@ -444,14 +439,14 @@ async def process_player_name(message: Message, state: FSMContext):
             except Exception as e:
                 logging.error(f"❌ Ошибка отправки карточки: {e}")
                 await message.answer(
-                    f"📄 {rating_text}\n\n"
+                    f"{rating_text}\n"
                     f"⚠️ Карточка временно недоступна",
                     reply_markup=get_main_keyboard(message.from_user.id)
                 )
         else:
             await message.answer(
-                f"📄 {rating_text}\n\n"
-                f"🖼 Карточка игрока не загружена",
+                f"{rating_text}\n"
+                f"ℹ️ Карточка игрока готовится",
                 reply_markup=get_main_keyboard(message.from_user.id)
             )
         
