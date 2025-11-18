@@ -648,7 +648,7 @@ async def process_game_host(message: Message, state: FSMContext):
     price = data.get('price')
     end_time = data.get('end_time')
     
-    # Создаем игру
+    # ★★★ ИСПРАВЛЕННЫЙ ВЫЗОВ СОЗДАНИЯ ИГРЫ ★★★
     game_id = db.create_game(
         game_name=game_name,
         game_date=game_date,
@@ -657,6 +657,7 @@ async def process_game_host(message: Message, state: FSMContext):
         buy_in=price,
         location=location,
         host=host,  # ★★★ ПЕРЕДАЕМ ВЕДУЩЕГО ★★★
+        end_time=end_time,  # ★★★ ПЕРЕДАЕМ ВРЕМЯ ОКОНЧАНИЯ ★★★
         created_by=message.from_user.id
     )
     
