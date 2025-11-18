@@ -280,6 +280,7 @@ class Database:
             return {}
 
     # МЕТОДЫ ДЛЯ ИГР
+    # В методе create_game измените значение buy_in по умолчанию:
     def create_game(self, game_name, game_date, max_players, game_type, buy_in, location, created_by):
         """Создание новой игры"""
         try:
@@ -287,7 +288,7 @@ class Database:
             cursor.execute('''
                 INSERT INTO games (game_name, game_date, max_players, game_type, buy_in, location, created_by)
                 VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id
-            ''', (game_name, game_date, max_players, game_type, buy_in, location, created_by))
+            ''', (game_name, game_date, max_players, game_type, buy_in or 1200.00, location, created_by))
             game_id = cursor.fetchone()[0]
             self.conn.commit()
             cursor.close()
