@@ -65,7 +65,7 @@ class Database:
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS games (
                     id SERIAL PRIMARY KEY,
-                    game_name VARCHAR(200) NOT NULL,
+                    game_name VARCHAR(200) NOT NULL DEFAULT 'Покерная игра',
                     game_date TIMESTAMP NOT NULL,
                     game_type VARCHAR(50) DEFAULT 'Texas Holdem',
                     max_players INTEGER NOT NULL,
@@ -90,11 +90,27 @@ class Database:
                 )
             ''')
             
+            # Проверяем существование колонки game_name и добавляем если нет
+            try:
+                cursor.execute("SELECT game_name FROM games LIMIT 1")
+            except Exception:
+                # Колонки нет, добавляем
+                cursor.execute('''
+                    ALTER TABLE games 
+                    ADD COLUMN IF NOT EXISTS game_name VARCHAR(200) NOT NULL DEFAULT 'Покерная игра'
+                ''')
+                logging.info("✅ Добавлена колонка game_name в таблицу games")
+            
             self.conn.commit()
             cursor.close()
             logging.info("✅ Таблицы в PostgreSQL инициализированы")
         except Exception as e:
             logging.error(f"❌ Ошибка инициализации БД: {e}")
+            # Пытаемся восстановить соединение
+            try:
+                self.conn.rollback()
+            except:
+                pass
     
     def add_player(self, name, rating):
         """Добавление игрока"""

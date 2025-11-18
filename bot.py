@@ -182,32 +182,476 @@ def get_test_keyboard(question_index):
     keyboard.adjust(1)
     return keyboard.as_markup(resize_keyboard=True)
 
-# ========== ОСНОВНЫЕ КОМАНДЫ ==========
+# ========== КОМАНДЫ ДЛЯ УПРАВЛЕНИЯ БАЗОЙ ДАННЫХ ==========
 
-@dp.message(Command("start"))
-async def start_handler(message: Message, command: CommandObject):
-    # Игнорируем повторные вызовы /start с параметрами
-    if command.args:
+@dp.message(Command("db_init"))
+async def db_init_handler(message: Message):
+    """Создание таблиц в базе данных"""
+    if not is_admin(message.from_user.id):
         return
     
-    user_id = message.from_user.id
-    current_time = message.date.timestamp()
+    try:
+        # Переинициализируем базу данных
+        db.init_db()
+        
+        await message.answer(
+            "✅ Таблицы в базе данных созданы/проверены!\n\n"
+            "Теперь используйте:\n"
+            "/db_tables - посмотреть таблицы\n" 
+            "/db_check - проверить состояние БД"
+        )
+        
+    except Exception as e:
+        await message.answer(f"❌ Ошибка создания таблиц: {e}")
+
+@dp.message(Command("reset_games_table"))
+async def reset_games_table_handler(message: Message):
+    """Сброс таблицы игр (для разработки)"""
+    if not is_admin(message.from_user.id):
+        return
     
-    # Проверяем, не обрабатывали ли мы недавно этот start
-    if user_id in processed_starts:
-        last_time = processed_starts[user_id]
-        # Если прошло меньше 3 секунд - игнорируем повторный вызов
-        if current_time - last_time < 3:
-            return
+    try:
+        cursor = db.conn.cursor()
+        # Удаляем таблицы и создаем заново
+        cursor.execute("DROP TABLE IF EXISTS game_registrations CASCADE")
+        cursor.execute("DROP TABLE IF EXISTS games CASCADE")
+        db.conn.commit()
+        
+        # Переинициализируем базу
+        db.init_db()
+        
+        await message.answer("✅ Таблица игр сброшена и пересоздана!")
+        
+    except Exception as e:
+        await message.answer(f"❌ Ошибка сброса таблицы: {e}")
+
+@dp.message(Command("db_tables"))
+async def db_tables_handler(message: Message):
+    """Показать все таблицы в базе данных"""
+    if not is_admin(message.from_user.id):
+        return
     
-    # Сохраняем время обработки
-    processed_starts[user_id] = current_time
+    try:
+        cursor = db.conn.cursor()
+        cursor.execute("""
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public'
+            ORDER BY table_name
+        """)
+        tables = [row[0] for row in cursor.fetchall()]
+        cursor.close()
+        
+        if tables:
+            tables_text = "📋 ТАБЛИЦЫ В БАЗЕ ДАННЫХ:\n\n"
+            for table in tables:
+                tables_text += f"• {table}\n"
+        else:
+            tables_text = "📭 В базе данных нет таблиц\n\nИспользуйте /db_init для создания"
+        
+        await message.answer(tables_text)
+        
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+
+@dp.message(Command("db_stats"))
+async def db_stats_handler(message: Message):
+    """Подробная статистика базы данных"""
+    if not is_admin(message.from_user.id):
+        return
     
-    welcome_text = (
-        "♥️♣️ Добро пожаловать в MagnumPoker ♦️♠️\n\n"
-        "Выберите действие:"
+    try:
+        cursor = db.conn.cursor()
+        
+        # Количество записей в players
+        cursor.execute("SELECT COUNT(*) FROM players")
+        players_count = cursor.fetchone()[0]
+        
+        # Количество записей в player_cards
+        cursor.execute("SELECT COUNT(*) FROM player_cards")
+        cards_count = cursor.fetchone()[0]
+        
+        # Количество записей в games
+        cursor.execute("SELECT COUNT(*) FROM games")
+        games_count = cursor.fetchone()[0]
+        
+        # Количество записей на игры
+        cursor.execute("SELECT COUNT(*) FROM game_registrations")
+        registrations_count = cursor.fetchone()[0]
+        
+        # Размер базы данных
+        cursor.execute("SELECT pg_size_pretty(pg_database_size('railway'))")
+        db_size = cursor.fetchone()[0]
+        
+        # Время работы базы
+        cursor.execute("SELECT NOW() - pg_postmaster_start_time()")
+        uptime = cursor.fetchone()[0]
+        
+        cursor.close()
+        
+        stats_text = "📊 ПОДРОБНАЯ СТАТИСТИКА БАЗЫ ДАННЫХ:\n\n"
+        stats_text += f"🗃️ Размер базы: {db_size}\n"
+        stats_text += f"⏱️ Время работы: {str(uptime).split('.')[0]}\n\n"
+        stats_text += f"👤 Игроков в БД: {players_count}\n"
+        stats_text += f"🖼 Карточек в БД: {cards_count}\n"
+        stats_text += f"🎮 Игр в БД: {games_count}\n"
+        stats_text += f"📝 Записей на игры: {registrations_count}\n\n"
+        stats_text += f"💾 Игроков в кэше: {len(players_rating)}\n"
+        stats_text += f"📸 Карточек в кэше: {len(player_photo_ids)}"
+        
+        await message.answer(stats_text)
+        
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}\n\nВозможно таблицы не созданы. Используйте /db_init")
+
+@dp.message(Command("force_check"))
+async def force_check_handler(message: Message):
+    """Принудительная проверка и создание таблиц"""
+    if not is_admin(message.from_user.id):
+        return
+    
+    try:
+        # Принудительно создаем таблицы
+        db.init_db()
+        
+        # Проверяем что таблицы есть
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
+        tables = [row[0] for row in cursor.fetchall()]
+        cursor.close()
+        
+        # Добавляем тестовую запись
+        test_added = db.add_player("ТестовыйИгрок", 4.0)
+        
+        check_text = "🔍 РЕЗУЛЬТАТ ПРОВЕРКИ:\n\n"
+        check_text += f"📋 Таблицы в БД: {tables}\n"
+        check_text += f"✅ Тестовый игрок добавлен: {test_added}\n"
+        
+        if "players" in tables and "player_cards" in tables and "games" in tables and "game_registrations" in tables:
+            check_text += "🎉 Все таблицы созданы и работают!\n"
+        else:
+            check_text += "❌ Проблема с созданием таблиц\n"
+            
+        await message.answer(check_text)
+        
+    except Exception as e:
+        await message.answer(f"❌ Критическая ошибка: {e}")
+
+@dp.message(Command("debug_data"))
+async def debug_data_handler(message: Message):
+    """Отладочная информация о данных"""
+    if not is_admin(message.from_user.id):
+        return
+    
+    debug_text = "🐛 ОТЛАДОЧНАЯ ИНФОРМАЦИЯ:\n\n"
+    
+    debug_text += "💾 ДАННЫЕ В ПАМЯТИ:\n"
+    debug_text += f"• players_rating: {players_rating}\n"
+    debug_text += f"• player_photo_ids: {player_photo_ids}\n\n"
+    
+    # Проверяем подключение к БД
+    try:
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM players")
+        db_players_count = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM games")
+        db_games_count = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM game_registrations")
+        db_registrations_count = cursor.fetchone()[0]
+        
+        cursor.close()
+        
+        debug_text += f"🗄️ ДАННЫЕ В POSTGRESQL:\n"
+        debug_text += f"• Игроков в БД: {db_players_count}\n"
+        debug_text += f"• Игр в БД: {db_games_count}\n"
+        debug_text += f"• Записей на игры: {db_registrations_count}\n"
+        
+    except Exception as e:
+        debug_text += f"🗄️ POSTGRESQL: ❌ Ошибка - {e}\n"
+    
+    await message.answer(debug_text)
+
+@dp.message(Command("db_check"))
+@dp.message(F.text == "📊 Статистика БД")
+async def db_check_handler(message: Message):
+    """Проверка состояния базы данных"""
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ Доступ запрещен")
+        return
+    
+    try:
+        # ОБНОВЛЯЕМ данные из базы перед показом статистики
+        global players_rating, player_photo_ids
+        players_rating = db.get_all_players()
+        player_photo_ids = db.get_all_cards()
+        
+        total_players = len(players_rating)
+        total_cards = len(player_photo_ids)
+        
+        status_text = "🟢 БАЗА ДАННЫХ РАБОТАЕТ\n\n"
+        status_text += f"📊 Статистика (актуальная):\n"
+        status_text += f"• Игроков в базе: {total_players}\n"
+        status_text += f"• Карточек в базе: {total_cards}\n"
+        status_text += f"• Подключение к PostgreSQL: ✅ Активно\n\n"
+        
+        if players_rating:
+            status_text += "📋 Топ игроков:\n"
+            for i, (name, rating) in enumerate(list(players_rating.items()), 1):
+                has_card = "🖼" if name in player_photo_ids else "❌"
+                status_text += f"{i}. {name}: {rating} {has_card}\n"
+        else:
+            status_text += "📋 База игроков пуста\n"
+        
+        await message.answer(status_text, reply_markup=get_admin_keyboard())
+        
+    except Exception as e:
+        await message.answer(f"🔴 ОШИБКА БАЗЫ ДАННЫХ:\n{str(e)}")
+
+@dp.message(Command("get_rules_photo_id"))
+async def get_rules_photo_id_handler(message: Message):
+    """Получить file_id фото для правил"""
+    if not is_admin(message.from_user.id):
+        return
+    
+    file_id = db.get_player_card("rules_photo")
+    if file_id:
+        await message.answer(f"🆔 File_ID для фото правил:\n`{file_id}`", parse_mode="Markdown")
+    else:
+        await message.answer("❌ Фото для правил еще не загружено")
+
+# ========== ОСНОВНЫЕ АДМИН КОМАНДЫ ==========
+
+@dp.message(Command("admin"))
+@dp.message(F.text == "👑 Админ-панель")
+async def admin_handler(message: Message):
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ Доступ запрещен")
+        return
+    
+    await message.answer(
+        "👑 Панель администратора:",
+        reply_markup=get_admin_keyboard()
     )
-    await message.answer(welcome_text, reply_markup=get_main_keyboard(message.from_user.id))
+
+# Добавление игрока (админ)
+@dp.message(F.text == "➕ Добавить игрока")
+async def add_player_handler(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    await message.answer(
+        "Введите данные игрока в формате:\n"
+        "Имя Фамилия Рейтинг\n\n"
+        "Пример: Иван Рунге 4.4\n"
+        "Или: Стас 4.2\n"
+        "Или: Анна Мария 4.8\n\n"
+        "Рейтинг по 5-балльной шкале"
+    )
+    await state.set_state(UserStates.admin_add_player)
+
+@dp.message(UserStates.admin_add_player)
+async def process_add_player(message: Message, state: FSMContext):
+    try:
+        # Разделяем сообщение на части
+        parts = message.text.split()
+        if len(parts) < 2:
+            await message.answer("❌ Неверный формат. Пример: Иван Рунге 4.4")
+            return
+        
+        # Последняя часть - рейтинг, остальные - имя игрока
+        rating_str = parts[-1].replace(',', '.')
+        player_name = ' '.join(parts[:-1])
+        
+        rating = float(rating_str)
+        
+        if rating < 0 or rating > 5:
+            await message.answer("❌ Рейтинг должен быть от 0 до 5")
+            return
+        
+        # Сохраняем в базу данных
+        if db.add_player(player_name, rating):
+            players_rating[player_name] = rating
+            await message.answer(
+                f"✅ Игрок добавлен:\n👤 {player_name}\n⭐️ Рейтинг: {rating}",
+                reply_markup=get_admin_keyboard()
+            )
+        else:
+            await message.answer("❌ Ошибка при добавлении игрока в базу")
+        
+    except ValueError:
+        await message.answer("❌ Рейтинг должен быть числом. Пример: Иван Рунге 4.4")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+    
+    await state.clear()
+
+# Редактирование рейтинга
+@dp.message(F.text == "✏️ Изменить рейтинг")
+async def update_rating_handler(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    if not players_rating:
+        await message.answer("❌ В базе нет игроков для редактирования")
+        return
+    
+    players_list = "\n".join([f"• {name}" for name in players_rating.keys()])
+    await message.answer(
+        f"📋 Список игроков:\n{players_list}\n\n"
+        "Введите данные в формате:\n"
+        "Имя Новый_рейтинг\n\n"
+        "Пример: Иван Рунге 4.7\n"
+        "Или: Стас 4.2"
+    )
+    await state.set_state(UserStates.admin_update_rating)
+
+@dp.message(UserStates.admin_update_rating)
+async def process_update_rating(message: Message, state: FSMContext):
+    try:
+        # Разделяем сообщение на части
+        parts = message.text.split()
+        if len(parts) < 2:
+            await message.answer("❌ Неверный формат. Пример: Иван Рунге 4.7")
+            return
+        
+        # Последняя часть - рейтинг, остальные - имя игрока
+        rating_str = parts[-1].replace(',', '.')
+        search_name = normalize_name(' '.join(parts[:-1]))
+        
+        # Ищем игрока с учетом е/ё
+        found_player = None
+        for name in players_rating:
+            if normalize_name(name) == search_name:
+                found_player = name
+                break
+        
+        if not found_player:
+            await message.answer(f"❌ Игрок не найден")
+            return
+        
+        rating = float(rating_str)
+        
+        if rating < 0 or rating > 5:
+            await message.answer("❌ Рейтинг должен быть от 0 до 5")
+            return
+        
+        # Обновляем рейтинг в базе
+        if db.update_player_rating(found_player, rating):
+            # Обновляем кэш
+            players_rating[found_player] = rating
+            await message.answer(
+                f"✅ Рейтинг обновлен:\n👤 {found_player}\n⭐️ Новый рейтинг: {rating}",
+                reply_markup=get_admin_keyboard()
+            )
+        else:
+            await message.answer(
+                f"❌ Ошибка при обновлении рейтинга",
+                reply_markup=get_admin_keyboard()
+            )
+        
+    except ValueError:
+        await message.answer("❌ Рейтинг должен быть числом. Пример: Иван Рунге 4.7")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+    
+    await state.clear()
+
+# Удаление игрока (админ)
+@dp.message(F.text == "🗑 Удалить игрока")
+async def remove_player_handler(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    if not players_rating:
+        await message.answer("❌ В базе нет игроков для удаления")
+        return
+    
+    players_list = "\n".join([f"• {name}" for name in players_rating.keys()])
+    await message.answer(
+        f"📋 Список игроков:\n{players_list}\n\n"
+        "Введите имя игрока для удаления:"
+    )
+    await state.set_state(UserStates.admin_remove_player)
+
+@dp.message(UserStates.admin_remove_player)
+async def process_remove_player(message: Message, state: FSMContext):
+    search_name = normalize_name(message.text.strip())
+    
+    # Ищем игрока с учетом е/ё
+    found_player = None
+    for name in players_rating:
+        if normalize_name(name) == search_name:
+            found_player = name
+            break
+    
+    if found_player and db.remove_player(found_player):
+        # Обновляем кэш
+        if found_player in players_rating:
+            del players_rating[found_player]
+        
+        await message.answer(
+            f"✅ Игрок '{found_player}' удален из базы",
+            reply_markup=get_admin_keyboard()
+        )
+    else:
+        await message.answer(
+            f"❌ Игрок не найден в базе",
+            reply_markup=get_admin_keyboard()
+        )
+    
+    await state.clear()
+
+# Загрузка карточки игрока (админ)
+@dp.message(F.text == "📤 Загрузить карточку")
+async def upload_card_handler(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    
+    await message.answer(
+        "Отправьте карточку игрока как фото с подписью в формате:\n"
+        "Имя_игрока\n\n"
+        "Пример подписи к фото: Рунге"
+    )
+
+# Обработка загруженной карточки
+@dp.message(F.photo)
+async def process_player_card(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    
+    if not message.caption:
+        await message.answer("❌ Добавьте подпись с именем игрока")
+        return
+    
+    player_name = message.caption.strip()
+    
+    if player_name not in players_rating:
+        await message.answer(
+            f"❌ Игрок '{player_name}' не найден в базе.\n"
+            f"Сначала добавьте игрока через '➕ Добавить игрока'.",
+            reply_markup=get_admin_keyboard()
+        )
+        return
+    
+    photo = message.photo[-1]
+    if db.save_player_card(player_name, photo.file_id):
+        # ОБНОВЛЯЕМ кэш карточек сразу после загрузки
+        global player_photo_ids
+        player_photo_ids = db.get_all_cards()
+        
+        await message.answer(
+            f"✅ Карточка для игрока '{player_name}' успешно загружена!\n"
+            f"📸 Теперь игроки смогут получать эту карточку.\n"
+            f"🔄 Статистика БД обновлена автоматически.",
+            reply_markup=get_admin_keyboard()
+        )
+    else:
+        await message.answer(
+            f"❌ Ошибка при сохранении карточки в базу данных",
+            reply_markup=get_admin_keyboard()
+        )
 
 # ========== СИСТЕМА ИГР ==========
 
@@ -379,6 +823,63 @@ async def process_game_selection(callback: types.CallbackQuery, state: FSMContex
         
     except (ValueError, IndexError):
         await callback.message.answer("❌ Ошибка выбора игры")
+
+# Мои записи
+@dp.message(F.text == "👥 Мои записи")
+async def my_registrations_handler(message: Message):
+    """Показать игры, на которые записан пользователь"""
+    try:
+        user_id = message.from_user.id
+        
+        # Получаем все игры
+        games = db.get_upcoming_games()
+        if not games:
+            await message.answer("🎉 Нет активных игр")
+            return
+        
+        # Ищем записи пользователя
+        my_registrations = []
+        for game in games:
+            game_id, game_name, game_date, game_type, max_players, buy_in, location, status = game
+            registrations = db.get_game_registrations(game_id)
+            
+            # Проверяем, записан ли пользователь на эту игру
+            for reg_player_name, reg_status, rating, reg_user_id in registrations:
+                if reg_user_id == user_id and reg_status == 'registered':
+                    my_registrations.append({
+                        'game_id': game_id,
+                        'game_name': game_name,
+                        'game_date': game_date,
+                        'location': location,
+                        'player_name': reg_player_name
+                    })
+                    break
+        
+        if not my_registrations:
+            await message.answer(
+                "📭 Вы еще не записаны ни на одну игру\n\n"
+                "🎮 Используйте кнопку 'Записаться на игру' чтобы присоединиться к игре!",
+                reply_markup=get_games_keyboard()
+            )
+            return
+        
+        # Формируем список записей
+        registrations_text = "👥 ВАШИ ЗАПИСИ НА ИГРЫ:\n\n"
+        
+        for reg in my_registrations:
+            registrations_text += f"🎮 {reg['game_name']}\n"
+            registrations_text += f"📅 {reg['game_date'].strftime('%d.%m.%Y %H:%M')}\n"
+            registrations_text += f"📍 {reg['location'] or 'Адрес не указан'}\n"
+            registrations_text += f"👤 Ваш ник: {reg['player_name']}\n\n"
+        
+        await message.answer(registrations_text, reply_markup=get_games_keyboard())
+        
+    except Exception as e:
+        logging.error(f"❌ Ошибка получения записей пользователя: {e}")
+        await message.answer(
+            "❌ Ошибка при получении ваших записей",
+            reply_markup=get_games_keyboard()
+        )
 
 # Обновляем обработчик имени для работы с записями на игры
 @dp.message(UserStates.waiting_for_player_name)
@@ -768,7 +1269,150 @@ async def cancel_specific_game_handler(callback: types.CallbackQuery):
     except (ValueError, IndexError):
         await callback.message.answer("❌ Ошибка при отмене игры")
 
-# ========== ОСТАЛЬНЫЕ ФУНКЦИИ ==========
+# ========== СИСТЕМА РАССЫЛКИ ==========
+
+@dp.message(F.text == "📢 Рассылка")
+async def broadcast_handler(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    await message.answer(
+        "📢 СИСТЕМА РАССЫЛКИ\n\n"
+        "Выберите тип рассылки:\n"
+        "• /broadcast_all - Всем игрокам\n"
+        "• /broadcast_game - Игрокам конкретной игры\n\n"
+        "Или введите сообщение для рассылки:"
+    )
+    await state.set_state(UserStates.admin_broadcast_message)
+
+@dp.message(Command("broadcast_all"))
+async def broadcast_all_handler(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    user_ids = db.get_all_game_registrations()
+    await state.update_data(broadcast_type="all", user_ids=user_ids)
+    
+    await message.answer(
+        f"📢 Рассылка ВСЕМ игрокам\n"
+        f"👥 Получателей: {len(user_ids)}\n\n"
+        "Введите сообщение для рассылки:"
+    )
+    await state.set_state(UserStates.admin_broadcast_message)
+
+@dp.message(Command("broadcast_game"))
+async def broadcast_game_handler(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    games = db.get_upcoming_games()
+    
+    if not games:
+        await message.answer("🎉 Нет активных игр")
+        return
+    
+    games_list = "\n".join([f"🎮 Игра #{game[0]} - {game[1]} - /broadcast_{game[0]}" for game in games])
+    
+    await message.answer(
+        f"📢 РАССЫЛКА ПО ИГРЕ:\n\n{games_list}\n\n"
+        "Нажмите на команду чтобы выбрать игру для рассылки"
+    )
+
+@dp.message(Command("broadcast_"))
+async def broadcast_specific_game_handler(message: Message, command: CommandObject, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    try:
+        game_id = int(command.args)
+        game = db.get_game_by_id(game_id)
+        
+        if not game:
+            await message.answer("❌ Игра не найдена")
+            return
+        
+        user_ids = db.get_game_registrations_by_game(game_id)
+        
+        await state.update_data(broadcast_type=f"game_{game_id}", user_ids=user_ids)
+        
+        await message.answer(
+            f"📢 Рассылка по игре #{game_id}\n"
+            f"📅 {game[2].strftime('%d.%m.%Y %H:%M')}\n"
+            f"👥 Получателей: {len(user_ids)}\n\n"
+            "Введите сообщение для рассылки:"
+        )
+        await state.set_state(UserStates.admin_broadcast_message)
+        
+    except (ValueError, IndexError):
+        await message.answer("❌ Неверный формат команды. Используйте: /broadcast_1")
+
+@dp.message(UserStates.admin_broadcast_message)
+async def process_broadcast_message(message: Message, state: FSMContext):
+    data = await state.get_data()
+    user_ids = data.get('user_ids', [])
+    broadcast_type = data.get('broadcast_type', 'manual')
+    
+    if not user_ids:
+        await message.answer("❌ Нет получателей для рассылки")
+        await state.clear()
+        return
+    
+    sent_count = 0
+    failed_count = 0
+    
+    # Отправляем сообщение всем пользователям
+    for user_id in user_ids:
+        try:
+            await bot.send_message(user_id, f"📢 ОБЪЯВЛЕНИЕ:\n\n{message.text}")
+            sent_count += 1
+            # Небольшая задержка чтобы не превысить лимиты Telegram
+            await asyncio.sleep(0.1)
+        except Exception as e:
+            logging.error(f"❌ Ошибка отправки сообщения пользователю {user_id}: {e}")
+            failed_count += 1
+    
+    # Формируем отчет
+    if broadcast_type == "all":
+        report = f"📢 Рассылка ВСЕМ игрокам завершена!\n"
+    elif broadcast_type.startswith("game_"):
+        game_id = broadcast_type.split('_')[1]
+        report = f"📢 Рассылка по игре #{game_id} завершена!\n"
+    else:
+        report = f"📢 Рассылка завершена!\n"
+    
+    report += f"✅ Отправлено: {sent_count}\n"
+    report += f"❌ Не отправлено: {failed_count}\n"
+    report += f"👥 Всего получателей: {len(user_ids)}"
+    
+    await message.answer(report, reply_markup=get_admin_keyboard())
+    await state.clear()
+
+# ========== ОСНОВНЫЕ ФУНКЦИИ БОТА ==========
+
+@dp.message(Command("start"))
+async def start_handler(message: Message, command: CommandObject):
+    # Игнорируем повторные вызовы /start с параметрами
+    if command.args:
+        return
+    
+    user_id = message.from_user.id
+    current_time = message.date.timestamp()
+    
+    # Проверяем, не обрабатывали ли мы недавно этот start
+    if user_id in processed_starts:
+        last_time = processed_starts[user_id]
+        # Если прошло меньше 3 секунд - игнорируем повторный вызов
+        if current_time - last_time < 3:
+            return
+    
+    # Сохраняем время обработки
+    processed_starts[user_id] = current_time
+    
+    welcome_text = (
+        "♥️♣️ Добро пожаловать в MagnumPoker ♦️♠️\n\n"
+        "Выберите действие:"
+    )
+    await message.answer(welcome_text, reply_markup=get_main_keyboard(message.from_user.id))
 
 # Обработка кнопки "Мой рейтинг"
 @dp.message(F.text == "🎯 Мой рейтинг")
