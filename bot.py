@@ -161,6 +161,7 @@ def get_game_management_keyboard(game_id):
     keyboard.add(InlineKeyboardButton(text="✏️ Изменить лимит", callback_data=f"limit_{game_id}"))
     keyboard.add(InlineKeyboardButton(text="🗑 Удалить игрока", callback_data=f"remove_{game_id}"))
     keyboard.add(InlineKeyboardButton(text="❌ Отменить игру", callback_data=f"cancel_{game_id}"))
+    keyboard.add(InlineKeyboardButton(text="🗑️ Удалить игру", callback_data=f"delete_{game_id}"))
     keyboard.adjust(1)
     return keyboard.as_markup()
 
@@ -187,6 +188,15 @@ def get_cancel_registration_keyboard(registrations):
         ))
     keyboard.adjust(1)
     return keyboard.as_markup()
+
+# Клавиатура для рассылки
+def get_broadcast_keyboard():
+    keyboard = ReplyKeyboardBuilder()
+    keyboard.add(KeyboardButton(text="📢 Всем игрокам"))
+    keyboard.add(KeyboardButton(text="🎮 По конкретной игре"))
+    keyboard.add(KeyboardButton(text="🔙 Админ-панель"))
+    keyboard.adjust(2)
+    return keyboard.as_markup(resize_keyboard=True)
 
 # Клавиатура для теста
 def get_test_keyboard(question_index):
@@ -780,7 +790,7 @@ async def process_game_location(message: Message, state: FSMContext):
 # Показ предстоящих игр
 @dp.message(F.text == "📅 Предстоящие игры")
 async def upcoming_games_handler(message: Message):
-    games = db.get_upcoming_games()
+    games = db.get_all_games()  # Используем get_all_games вместо get_upcoming_games
     
     if not games:
         await message.answer("🎉 На этой неделе пока нет запланированных игр")
@@ -802,7 +812,7 @@ async def upcoming_games_handler(message: Message):
 # Запись на игру
 @dp.message(F.text == "🎮 Записаться на игру")
 async def register_game_handler(message: Message, state: FSMContext):
-    games = db.get_upcoming_games()
+    games = db.get_all_games()  # Используем get_all_games вместо get_upcoming_games
     
     if not games:
         await message.answer("🎉 Пока нет игр для записи")
@@ -1036,18 +1046,35 @@ async def process_player_name(message: Message, state: FSMContext):
 # Показ списка игроков на игру
 @dp.message(F.text == "📋 Списки игроков")
 async def show_game_lists_handler(message: Message):
-    games = db.get_upcoming_games()
+    games_info = db.get_all_registrations_info()
     
-    if not games:
-        await message.answer("🎉 Нет активных игр")
+    if not games_info:
+        await message.answer("🎉 Нет активных игр с записями")
         return
     
-    await message.answer(
-        "📋 Выберите игру для просмотра списка игроков:",
-        reply_markup=get_games_selection_keyboard(games, "list")
-    )
+    lists_text = "📋 СПИСКИ ИГРОКОВ НА ВСЕ ИГРЫ:\n\n"
+    
+    for game_info in games_info:
+        game_id, game_name, game_date, location, registered_count, max_players, players_list = game_info
+        
+        lists_text += f"🎮 {game_name}\n"
+        lists_text += f"📅 {game_date.strftime('%d.%m.%Y %H:%M')}\n"
+        lists_text += f"📍 {location or 'Адрес не указан'}\n"
+        lists_text += f"👥 Игроков: {registered_count}/{max_players}\n"
+        
+        if players_list:
+            players = players_list.split(', ')
+            lists_text += "📋 СПИСОК ИГРОКОВ:\n"
+            for i, player in enumerate(players, 1):
+                lists_text += f"{i}. {player}\n"
+        else:
+            lists_text += "📭 Пока никто не записался\n"
+        
+        lists_text += "\n"
+    
+    await message.answer(lists_text)
 
-# Обработка показа списка игроков
+# Обработка показа списка игроков для конкретной игры
 @dp.callback_query(F.data.startswith("list_"))
 async def show_game_list_handler(callback: types.CallbackQuery):
     try:
@@ -1085,7 +1112,7 @@ async def manage_games_handler(message: Message):
     if not is_admin(message.from_user.id):
         return
     
-    games = db.get_upcoming_games()
+    games = db.get_all_games()  # Используем get_all_games вместо get_upcoming_games
     
     if not games:
         await message.answer("🎉 Нет активных игр")
@@ -1311,7 +1338,7 @@ async def process_remove_player_from_game(message: Message, state: FSMContext):
     
     await state.clear()
 
-# Отмена игры
+# Отмена игры с уведомлением
 @dp.callback_query(F.data.startswith("cancel_"))
 async def cancel_specific_game_handler(callback: types.CallbackQuery):
     if not is_admin(callback.from_user.id):
@@ -1357,23 +1384,91 @@ async def cancel_specific_game_handler(callback: types.CallbackQuery):
     except (ValueError, IndexError):
         await callback.message.answer("❌ Ошибка при отмене игры")
 
+# Удаление игры без уведомления
+@dp.callback_query(F.data.startswith("delete_"))
+async def delete_specific_game_handler(callback: types.CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        return
+    
+    try:
+        game_id = int(callback.data.split('_')[1])
+        game = db.get_game_by_id(game_id)
+        
+        if not game:
+            await callback.message.answer("❌ Игра не найдена")
+            return
+        
+        # Создаем клавиатуру с подтверждением
+        keyboard = InlineKeyboardBuilder()
+        keyboard.add(InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"confirm_delete_{game_id}"))
+        keyboard.add(InlineKeyboardButton(text="❌ Нет, отменить", callback_data=f"cancel_delete_{game_id}"))
+        keyboard.adjust(2)
+        
+        await callback.message.answer(
+            f"⚠️ ВНИМАНИЕ!\n\n"
+            f"Вы собираетесь удалить игру:\n"
+            f"🎮 {game[1]}\n"
+            f"📅 {game[2].strftime('%d.%m.%Y %H:%M')}\n\n"
+            f"❌ Игроки НЕ получат уведомления!\n\n"
+            f"Вы уверены?",
+            reply_markup=keyboard.as_markup()
+        )
+        await callback.answer()
+        
+    except (ValueError, IndexError):
+        await callback.message.answer("❌ Ошибка при удалении игры")
+
+@dp.callback_query(F.data.startswith("confirm_delete_"))
+async def confirm_delete_game_handler(callback: types.CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        return
+    
+    try:
+        game_id = int(callback.data.split('_')[2])
+        game = db.get_game_by_id(game_id)
+        
+        if not game:
+            await callback.message.answer("❌ Игра не найдена")
+            return
+        
+        if db.delete_game(game_id):
+            await callback.message.answer(
+                f"✅ Игра успешно удалена!\n"
+                f"🎮 {game[1]}\n"
+                f"📅 {game[2].strftime('%d.%m.%Y %H:%M')}",
+                reply_markup=get_admin_games_keyboard()
+            )
+        else:
+            await callback.message.answer("❌ Ошибка при удалении игры")
+        
+        await callback.answer()
+        
+    except (ValueError, IndexError):
+        await callback.message.answer("❌ Ошибка при удалении игры")
+
+@dp.callback_query(F.data.startswith("cancel_delete_"))
+async def cancel_delete_game_handler(callback: types.CallbackQuery):
+    await callback.message.answer(
+        "❌ Удаление игры отменено",
+        reply_markup=get_admin_games_keyboard()
+    )
+    await callback.answer()
+
 # ========== СИСТЕМА РАССЫЛКИ ==========
 
 @dp.message(F.text == "📢 Рассылка")
-async def broadcast_handler(message: Message, state: FSMContext):
+async def broadcast_handler(message: Message):
     if not is_admin(message.from_user.id):
         return
     
     await message.answer(
         "📢 СИСТЕМА РАССЫЛКИ\n\n"
-        "Выберите тип рассылки:\n"
-        "• /broadcast_all - Всем игрокам\n"
-        "• /broadcast_game - Игрокам конкретной игры\n\n"
-        "Или введите сообщение для рассылки:"
+        "Выберите тип рассылки:",
+        reply_markup=get_broadcast_keyboard()
     )
-    await state.set_state(UserStates.admin_broadcast_message)
 
-@dp.message(Command("broadcast_all"))
+# Рассылка всем игрокам
+@dp.message(F.text == "📢 Всем игрокам")
 async def broadcast_all_handler(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
@@ -1388,51 +1483,53 @@ async def broadcast_all_handler(message: Message, state: FSMContext):
     )
     await state.set_state(UserStates.admin_broadcast_message)
 
-@dp.message(Command("broadcast_game"))
-async def broadcast_game_handler(message: Message, state: FSMContext):
+# Рассылка по конкретной игре
+@dp.message(F.text == "🎮 По конкретной игре")
+async def broadcast_game_handler(message: Message):
     if not is_admin(message.from_user.id):
         return
     
-    games = db.get_upcoming_games()
+    games = db.get_all_games()
     
     if not games:
         await message.answer("🎉 Нет активных игр")
         return
     
-    games_list = "\n".join([f"🎮 Игра #{game[0]} - {game[1]} - /broadcast_{game[0]}" for game in games])
-    
     await message.answer(
-        f"📢 РАССЫЛКА ПО ИГРЕ:\n\n{games_list}\n\n"
-        "Нажмите на команду чтобы выбрать игру для рассылки"
+        "🎮 Выберите игру для рассылки:",
+        reply_markup=get_games_selection_keyboard(games, "broadcast")
     )
 
-@dp.message(Command("broadcast_"))
-async def broadcast_specific_game_handler(message: Message, command: CommandObject, state: FSMContext):
-    if not is_admin(message.from_user.id):
+# Обработка выбора игры для рассылки
+@dp.callback_query(F.data.startswith("broadcast_"))
+async def broadcast_specific_game_handler(callback: types.CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
         return
     
     try:
-        game_id = int(command.args)
+        game_id = int(callback.data.split('_')[1])
         game = db.get_game_by_id(game_id)
         
         if not game:
-            await message.answer("❌ Игра не найдена")
+            await callback.message.answer("❌ Игра не найдена")
             return
         
         user_ids = db.get_game_registrations_by_game(game_id)
         
         await state.update_data(broadcast_type=f"game_{game_id}", user_ids=user_ids)
         
-        await message.answer(
-            f"📢 Рассылка по игре #{game_id}\n"
+        await callback.message.answer(
+            f"📢 Рассылка по игре:\n"
+            f"🎮 {game[1]}\n"
             f"📅 {game[2].strftime('%d.%m.%Y %H:%M')}\n"
             f"👥 Получателей: {len(user_ids)}\n\n"
             "Введите сообщение для рассылки:"
         )
         await state.set_state(UserStates.admin_broadcast_message)
+        await callback.answer()
         
     except (ValueError, IndexError):
-        await message.answer("❌ Неверный формат команды. Используйте: /broadcast_1")
+        await callback.message.answer("❌ Ошибка выбора игры")
 
 @dp.message(UserStates.admin_broadcast_message)
 async def process_broadcast_message(message: Message, state: FSMContext):
@@ -1464,7 +1561,9 @@ async def process_broadcast_message(message: Message, state: FSMContext):
         report = f"📢 Рассылка ВСЕМ игрокам завершена!\n"
     elif broadcast_type.startswith("game_"):
         game_id = broadcast_type.split('_')[1]
-        report = f"📢 Рассылка по игре #{game_id} завершена!\n"
+        game = db.get_game_by_id(int(game_id))
+        report = f"📢 Рассылка по игре завершена!\n"
+        report += f"🎮 {game[1]}\n"
     else:
         report = f"📢 Рассылка завершена!\n"
     
@@ -1666,6 +1765,13 @@ async def back_to_games_handler(message: Message):
 # Обработка кнопки "Админ-панель"
 @dp.message(F.text == "🔙 Админ-панель")
 async def back_to_admin_handler(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    await message.answer("Возвращаемся в админ-панель:", reply_markup=get_admin_keyboard())
+
+# Обработка кнопки "🔙 Админ-панель" в рассылке
+@dp.message(F.text == "🔙 Админ-панель")
+async def back_to_admin_from_broadcast_handler(message: Message):
     if not is_admin(message.from_user.id):
         return
     await message.answer("Возвращаемся в админ-панель:", reply_markup=get_admin_keyboard())

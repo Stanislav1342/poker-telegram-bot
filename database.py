@@ -358,6 +358,28 @@ class Database:
             logging.error(f"❌ Ошибка получения игр: {e}")
             return []
 
+    def get_all_games(self):
+        """Получение всех игр (включая активные)"""
+        try:
+            if not self.conn:
+                self.connect()
+                if not self.conn:
+                    return []
+            
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                SELECT id, game_name, game_date, game_type, max_players, buy_in, location, status
+                FROM games 
+                WHERE status = 'upcoming'
+                ORDER BY game_date
+            ''')
+            games = cursor.fetchall()
+            cursor.close()
+            return games
+        except Exception as e:
+            logging.error(f"❌ Ошибка получения всех игр: {e}")
+            return []
+
     def get_game_registrations(self, game_id):
         """Получение списка записавшихся на игру"""
         try:
@@ -474,6 +496,31 @@ class Database:
                 self.conn = None
             return False
 
+    def delete_game(self, game_id):
+        """Удаление игры без уведомлений"""
+        try:
+            if not self.conn:
+                self.connect()
+                if not self.conn:
+                    return False
+            
+            cursor = self.conn.cursor()
+            # Сначала удаляем записи на игру (из-за CASCADE это делается автоматически, но для надежности)
+            cursor.execute('DELETE FROM game_registrations WHERE game_id = %s', (game_id,))
+            # Затем удаляем саму игру
+            cursor.execute('DELETE FROM games WHERE id = %s', (game_id,))
+            self.conn.commit()
+            cursor.close()
+            return cursor.rowcount > 0
+        except Exception as e:
+            logging.error(f"❌ Ошибка удаления игры: {e}")
+            try:
+                if self.conn:
+                    self.conn.rollback()
+            except:
+                self.conn = None
+            return False
+
     def get_all_game_registrations(self):
         """Получение всех записей на игры (для рассылки)"""
         try:
@@ -560,6 +607,32 @@ class Database:
             except:
                 self.conn = None
             return False
+
+    def get_all_registrations_info(self):
+        """Получение информации о всех записях на все игры"""
+        try:
+            if not self.conn:
+                self.connect()
+                if not self.conn:
+                    return []
+            
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                SELECT g.id, g.game_name, g.game_date, g.location, 
+                       COUNT(gr.id) as registered_count, g.max_players,
+                       STRING_AGG(gr.player_name, ', ') as players_list
+                FROM games g
+                LEFT JOIN game_registrations gr ON g.id = gr.game_id AND gr.status = 'registered'
+                WHERE g.status = 'upcoming'
+                GROUP BY g.id, g.game_name, g.game_date, g.location, g.max_players
+                ORDER BY g.game_date
+            ''')
+            games_info = cursor.fetchall()
+            cursor.close()
+            return games_info
+        except Exception as e:
+            logging.error(f"❌ Ошибка получения информации о записях: {e}")
+            return []
 
 # Глобальный экземпляр базы данных
 db = Database()
