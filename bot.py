@@ -34,8 +34,8 @@ class UserStates(StatesGroup):
     admin_create_game_date = State()
     admin_create_game_players = State()
     admin_create_game_location = State()
-    admin_create_game_price = State()  # ★★★ НОВОЕ СОСТОЯНИЕ ДЛЯ ЦЕНЫ ★★★
-    admin_create_game_host = State()   # ★★★ НОВОЕ СОСТОЯНИЕ ДЛЯ ВЕДУЩЕГО ★★★
+    admin_create_game_price = State()
+    admin_create_game_host = State()
     admin_remove_player_from_game = State()
     admin_update_game_limit = State()
     
@@ -188,7 +188,7 @@ def get_game_management_keyboard(game_id):
 def get_games_selection_keyboard(games, action="select"):
     keyboard = InlineKeyboardBuilder()
     for game in games:
-        game_id, game_name, game_date, game_type, max_players, buy_in, location, status, host = game
+        game_id, game_name, game_date, game_type, max_players, buy_in, location, status, host, end_time = game
         keyboard.add(InlineKeyboardButton(
             text=f"{game_name} ({game_date.strftime('%d.%m %H:%M')})",
             callback_data=f"{action}_{game_id}"
@@ -528,14 +528,49 @@ async def process_photo_message(message: Message, state: FSMContext):
 async def games_handler(message: Message):
     await message.answer("🎮 Управление играми и записями:", reply_markup=get_games_keyboard())
 
+# ★★★ КРАСИВЫЙ ФОРМАТ ДЛЯ АДМИН-МЕНЮ ★★★
 @dp.message(F.text == "🎮 Управление играми")
 async def admin_games_handler(message: Message):
     if not is_admin(message.from_user.id):
         return
     
-    await message.answer("👑 Админ-панель игр:", reply_markup=get_admin_games_keyboard())
+    games = db.get_upcoming_games()
+    
+    if not games:
+        await message.answer("🎉 Нет активных игр для управления")
+        return
+    
+    games_text = "🎯 АКТИВНЫЕ ИГРЫ ДЛЯ УПРАВЛЕНИЯ:\n\n"
+    for game in games:
+        game_id, game_name, game_date, game_type, max_players, buy_in, location, status, host, end_time = game
+        registrations = db.get_game_registrations(game_id)
+        current_players = len([r for r in registrations if r[1] == 'registered'])
+        
+        # ★★★ КРАСИВЫЙ ФОРМАТ КАК В ОБЩЕМ МЕНЮ ★★★
+        games_text += f"🌃 {get_russian_weekday(game_date)} {game_date.strftime('%d.%m')}\n"
+        games_text += f"{game_name} 🃏\n"
+        games_text += f"{location}\n"
+        games_text += f"🕢 {game_date.strftime('%H:%M')}-{end_time or '22:00'}\n"
+        games_text += f"💸 {int(buy_in)} рублей\n"
+        games_text += f"🎤 Ведущий: {host or 'Капоне'}\n"
+        games_text += f"👥 Игроков: {current_players}/{max_players}\n\n"
+    
+    # Создаем клавиатуру для выбора игры
+    keyboard = InlineKeyboardBuilder()
+    for game in games:
+        game_id, game_name, game_date, game_type, max_players, buy_in, location, status, host, end_time = game
+        keyboard.add(InlineKeyboardButton(
+            text=f"🎮 {game_name}",
+            callback_data=f"manage_{game_id}"
+        ))
+    keyboard.adjust(1)
+    
+    await message.answer(
+        games_text + "🛠️ Выберите игру для управления:",
+        reply_markup=keyboard.as_markup()
+    )
 
-# ★★★ ОБНОВЛЕННОЕ СОЗДАНИЕ ИГРЫ ★★★
+# Создание игры (админ)
 @dp.message(F.text == "➕ Создать игру")
 async def create_game_handler(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
@@ -648,7 +683,7 @@ async def process_game_host(message: Message, state: FSMContext):
     price = data.get('price')
     end_time = data.get('end_time')
     
-    # Создаем игру
+    # ★★★ ИСПРАВЛЕННЫЙ ВЫЗОВ СОЗДАНИЯ ИГРЫ ★★★
     game_id = db.create_game(
         game_name=game_name,
         game_date=game_date,
@@ -656,7 +691,8 @@ async def process_game_host(message: Message, state: FSMContext):
         game_type="Texas Holdem",
         buy_in=price,
         location=location,
-        host=host,  # ★★★ ПЕРЕДАЕМ ВЕДУЩЕГО ★★★
+        host=host,
+        end_time=end_time,
         created_by=message.from_user.id
     )
     
@@ -858,120 +894,7 @@ async def my_registrations_handler(message: Message):
             reply_markup=get_games_keyboard()
         )
 
-# Обновляем обработчик имени для работы с записями на игры
-@dp.message(UserStates.waiting_for_player_name)
-async def process_player_name(message: Message, state: FSMContext):
-    player_name = message.text.strip()
-    state_data = await state.get_data()
-    game_id = state_data.get('game_id')
-    
-    # Если это запись на игру
-    if game_id:
-        success, result_message = db.register_player_for_game(game_id, player_name, message.from_user.id)
-        
-        if success:
-            # Обновляем информацию об игре
-            game = db.get_game_by_id(game_id)
-            registrations = db.get_game_registrations(game_id)
-            current_players = len([r for r in registrations if r[1] == 'registered'])
-            max_players = game[4]
-            
-            # ★★★ ОБНОВЛЕННОЕ СООБЩЕНИЕ ПОДТВЕРЖДЕНИЯ ЗАПИСИ ★★★
-            await message.answer(
-                f"{result_message}\n\n"
-                f"🌃 {get_russian_weekday(game[2])} {game[2].strftime('%d.%m')}\n"
-                f"{game[1]} 🃏\n"
-                f"{game[6]}\n"
-                f"🕢 {game[2].strftime('%H:%M')}-{game[9] or '22:00'}\n"
-                f"💸 {int(game[5])} рублей\n"
-                f"🎤 Ведущий: {game[8] or 'Капоне'}\n"
-                f"👤 Ваш ник: {player_name}\n"
-                f"👥 Записано: {current_players}/{max_players} игроков",
-                reply_markup=get_games_keyboard()
-            )
-        else:
-            await message.answer(result_message, reply_markup=get_games_keyboard())
-        
-        await state.clear()
-        return
-    
-    # Старая логика поиска рейтинга (остается без изменений)
-    search_name = normalize_name(player_name)
-    
-    found_player = None
-    
-    # Поиск игрока (регистронезависимый с учетом ё/е)
-    for name in players_rating:
-        if normalize_name(name) == search_name:
-            found_player = name
-            break
-    
-    # Если точного совпадения нет, ищем по части имени
-    if not found_player:
-        for name in players_rating:
-            name_words = normalize_name(name).split()
-            search_words = search_name.split()
-            if any(any(sw in nw or nw in sw for nw in name_words) for sw in search_words):
-                found_player = name
-                break
-    
-    # Если все еще не нашли, ищем по подстроке
-    if not found_player:
-        for name in players_rating:
-            if search_name in normalize_name(name):
-                found_player = name
-                break
-    
-    if found_player:
-        rating = players_rating[found_player]
-        position = get_player_position(found_player)
-        
-        # ОБНОВЛЯЕМ данные карточек перед показом
-        file_id = db.get_player_card(found_player)
-        if file_id:
-            try:
-                await message.answer_photo(
-                    file_id,
-                    caption=f"👤 {found_player}\n⭐️ Рейтинг: {rating}\n📍 Место: {position}",
-                    reply_markup=get_main_keyboard(message.from_user.id)
-                )
-            except Exception as e:
-                await message.answer(
-                    f"👤 {found_player}\n⭐️ Рейтинг: {rating}\n📍 Место: {position}\n"
-                    f"❌ Ошибка загрузки карточки",
-                    reply_markup=get_main_keyboard(message.from_user.id)
-                )
-        else:
-            await message.answer(
-                f"👤 {found_player}\n⭐️ Рейтинг: {rating}\n📍 Место: {position}\n"
-                f"ℹ️ Карточка игрока готовится",
-                reply_markup=get_main_keyboard(message.from_user.id)
-            )
-    else:
-        # Показываем похожих игроков для помощи
-        similar_players = []
-        for name in players_rating:
-            if search_name and (search_name in normalize_name(name) or any(word.startswith(search_name) for word in normalize_name(name).split())):
-                similar_players.append(name)
-        
-        if similar_players:
-            similar_text = "\n".join([f"• {name}" for name in similar_players[:3]])
-            await message.answer(
-                f"❌ Игрок '{message.text.strip()}' не найден.\n\n"
-                f"💡 Возможно вы искали:\n{similar_text}\n\n"
-                "Попробуйте ввести другое имя или обратитесь к администратору.",
-                reply_markup=get_main_keyboard(message.from_user.id)
-            )
-        else:
-            await message.answer(
-                f"❌ Игрок '{message.text.strip()}' не найден.\n"
-                "Проверьте имя или обратитесь к администратору.",
-                reply_markup=get_main_keyboard(message.from_user.id)
-            )
-    
-    await state.clear()
-
-# Показ списка игроков на игру (для пользователей)
+# ★★★ ИСПРАВЛЕННЫЙ ОБРАБОТЧИК СПИСКОВ ИГРОКОВ ★★★
 @dp.message(F.text == "📋 Списки игроков")
 async def show_game_lists_handler(message: Message):
     games = db.get_upcoming_games()
@@ -980,9 +903,22 @@ async def show_game_lists_handler(message: Message):
         await message.answer("🎉 Нет активных игр")
         return
     
+    # Создаем инлайн-клавиатуру с играми
+    keyboard = InlineKeyboardBuilder()
+    for game in games:
+        game_id, game_name, game_date, game_type, max_players, buy_in, location, status, host, end_time = game
+        registrations = db.get_game_registrations(game_id)
+        current_players = len([r for r in registrations if r[1] == 'registered'])
+        
+        keyboard.add(InlineKeyboardButton(
+            text=f"{game_name} ({current_players}/{max_players})",
+            callback_data=f"list_{game_id}"
+        ))
+    keyboard.adjust(1)
+    
     await message.answer(
         "📋 Выберите игру для просмотра списка игроков:",
-        reply_markup=get_games_selection_keyboard(games, "list")
+        reply_markup=keyboard.as_markup()
     )
 
 # ★★★ ОБНОВЛЕННЫЙ ФОРМАТ ОТОБРАЖЕНИЯ СПИСКА ИГРОКОВ ★★★
@@ -1020,36 +956,7 @@ async def show_game_list_handler(callback: types.CallbackQuery):
     except (ValueError, IndexError):
         await callback.message.answer("❌ Ошибка при получении списка игроков")
 
-# ========== АДМИН-УПРАВЛЕНИЕ ИГРАМИ ==========
-
-@dp.message(F.text == "📋 Управление играми")
-async def manage_games_handler(message: Message):
-    if not is_admin(message.from_user.id):
-        return
-    
-    games = db.get_upcoming_games()
-    
-    if not games:
-        await message.answer("🎉 Нет активных игр")
-        return
-    
-    games_text = "📅 АКТИВНЫЕ ИГРЫ:\n\n"
-    for game in games:
-        game_id, game_name, game_date, game_type, max_players, buy_in, location, status, host, end_time = game
-        registrations = db.get_game_registrations(game_id)
-        current_players = len([r for r in registrations if r[1] == 'registered'])
-        
-        games_text += f"🎮 {game_name}\n"
-        games_text += f"📅 {game_date.strftime('%d.%m.%Y %H:%M')}\n"
-        games_text += f"👥 {current_players}/{max_players} игроков\n"
-        games_text += f"📍 {location or 'Адрес не указан'}\n\n"
-    
-    await message.answer(
-        games_text + "🛠️ Выберите игру для управления:",
-        reply_markup=get_games_selection_keyboard(games, "manage")
-    )
-
-# НОВАЯ ФУНКЦИЯ: Списки всех игроков на всех играх (для админ-панели)
+# ★★★ КРАСИВЫЙ ФОРМАТ ДЛЯ СПИСКОВ ВСЕХ ИГРОКОВ ★★★
 @dp.message(F.text == "📋 Списки всех игроков")
 async def admin_all_players_handler(message: Message):
     if not is_admin(message.from_user.id):
@@ -1067,9 +974,13 @@ async def admin_all_players_handler(message: Message):
         game_id, game_name, game_date, game_type, max_players, buy_in, location, status, host, end_time = game
         registrations = db.get_game_registrations(game_id)
         
-        all_players_text += f"🎮 {game_name}\n"
-        all_players_text += f"📅 {game_date.strftime('%d.%m.%Y %H:%M')}\n"
-        all_players_text += f"📍 {location or 'Адрес не указан'}\n"
+        # ★★★ КРАСИВЫЙ ФОРМАТ ★★★
+        all_players_text += f"🌃 {get_russian_weekday(game_date)} {game_date.strftime('%d.%m')}\n"
+        all_players_text += f"{game_name} 🃏\n"
+        all_players_text += f"{location}\n"
+        all_players_text += f"🕢 {game_date.strftime('%H:%M')}-{end_time or '22:00'}\n"
+        all_players_text += f"💸 {int(buy_in)} рублей\n"
+        all_players_text += f"🎤 Ведущий: {host or 'Капоне'}\n"
         all_players_text += f"👥 Игроков: {len(registrations)}/{max_players}\n"
         
         if registrations:
