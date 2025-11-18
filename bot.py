@@ -36,6 +36,7 @@ class UserStates(StatesGroup):
     admin_create_game_location = State()
     admin_create_game_price = State()
     admin_create_game_host = State()
+    admin_broadcast_photo = State()
     admin_remove_player_from_game = State()
     admin_update_game_limit = State()
     
