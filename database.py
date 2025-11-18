@@ -108,15 +108,20 @@ class Database:
             logging.error(f"❌ Ошибка инициализации БД: {e}")
             # Пытаемся восстановить соединение
             try:
-                self.conn.rollback()
+                if self.conn:
+                    self.conn.rollback()
             except:
-                pass
+                self.conn = None
+            # Пробуем переподключиться
+            self.connect()
     
     def add_player(self, name, rating):
         """Добавление игрока"""
         try:
             if not self.conn:
-                return False
+                self.connect()
+                if not self.conn:
+                    return False
             
             cursor = self.conn.cursor()
             cursor.execute(
@@ -128,13 +133,20 @@ class Database:
             return True
         except Exception as e:
             logging.error(f"❌ Ошибка добавления игрока: {e}")
+            try:
+                if self.conn:
+                    self.conn.rollback()
+            except:
+                self.conn = None
             return False
     
     def update_player_rating(self, name, new_rating):
         """Обновление рейтинга игрока"""
         try:
             if not self.conn:
-                return False
+                self.connect()
+                if not self.conn:
+                    return False
             
             cursor = self.conn.cursor()
             cursor.execute(
@@ -146,13 +158,20 @@ class Database:
             return cursor.rowcount > 0
         except Exception as e:
             logging.error(f"❌ Ошибка обновления рейтинга: {e}")
+            try:
+                if self.conn:
+                    self.conn.rollback()
+            except:
+                self.conn = None
             return False
     
     def remove_player(self, name):
         """Удаление игрока"""
         try:
             if not self.conn:
-                return False
+                self.connect()
+                if not self.conn:
+                    return False
             
             cursor = self.conn.cursor()
             cursor.execute("DELETE FROM player_cards WHERE player_name = %s", (name,))
@@ -162,13 +181,20 @@ class Database:
             return True
         except Exception as e:
             logging.error(f"❌ Ошибка удаления игрока: {e}")
+            try:
+                if self.conn:
+                    self.conn.rollback()
+            except:
+                self.conn = None
             return False
     
     def get_all_players(self):
         """Получение всех игроков"""
         try:
             if not self.conn:
-                return {}
+                self.connect()
+                if not self.conn:
+                    return {}
             
             cursor = self.conn.cursor()
             cursor.execute("SELECT name, rating FROM players ORDER BY rating DESC")
@@ -183,7 +209,9 @@ class Database:
         """Сохранение карточки игрока"""
         try:
             if not self.conn:
-                return False
+                self.connect()
+                if not self.conn:
+                    return False
             
             cursor = self.conn.cursor()
             cursor.execute(
@@ -195,13 +223,20 @@ class Database:
             return True
         except Exception as e:
             logging.error(f"❌ Ошибка сохранения карточки: {e}")
+            try:
+                if self.conn:
+                    self.conn.rollback()
+            except:
+                self.conn = None
             return False
     
     def get_player_card(self, player_name):
         """Получение карточки игрока"""
         try:
             if not self.conn:
-                return None
+                self.connect()
+                if not self.conn:
+                    return None
             
             cursor = self.conn.cursor()
             cursor.execute(
@@ -219,7 +254,9 @@ class Database:
         """Получение всех карточек"""
         try:
             if not self.conn:
-                return {}
+                self.connect()
+                if not self.conn:
+                    return {}
             
             cursor = self.conn.cursor()
             cursor.execute("SELECT player_name, file_id FROM player_cards")
@@ -234,6 +271,11 @@ class Database:
     def create_game(self, game_name, game_date, max_players, game_type, buy_in, location, created_by):
         """Создание новой игры"""
         try:
+            if not self.conn:
+                self.connect()
+                if not self.conn:
+                    return None
+            
             cursor = self.conn.cursor()
             cursor.execute('''
                 INSERT INTO games (game_name, game_date, max_players, game_type, buy_in, location, created_by)
@@ -245,11 +287,21 @@ class Database:
             return game_id
         except Exception as e:
             logging.error(f"❌ Ошибка создания игры: {e}")
+            try:
+                if self.conn:
+                    self.conn.rollback()
+            except:
+                self.conn = None
             return None
 
     def register_player_for_game(self, game_id, player_name, user_id):
         """Запись игрока на игру"""
         try:
+            if not self.conn:
+                self.connect()
+                if not self.conn:
+                    return False, "❌ Ошибка подключения к базе данных"
+            
             # Проверяем есть ли место на игре
             cursor = self.conn.cursor()
             cursor.execute('''
@@ -277,11 +329,21 @@ class Database:
             return True, "✅ Вы успешно записаны на игру!"
         except Exception as e:
             logging.error(f"❌ Ошибка записи на игру: {e}")
+            try:
+                if self.conn:
+                    self.conn.rollback()
+            except:
+                self.conn = None
             return False, "❌ Ошибка при записи на игру"
 
     def get_upcoming_games(self):
         """Получение предстоящих игр"""
         try:
+            if not self.conn:
+                self.connect()
+                if not self.conn:
+                    return []
+            
             cursor = self.conn.cursor()
             cursor.execute('''
                 SELECT id, game_name, game_date, game_type, max_players, buy_in, location, status
@@ -299,6 +361,11 @@ class Database:
     def get_game_registrations(self, game_id):
         """Получение списка записавшихся на игру"""
         try:
+            if not self.conn:
+                self.connect()
+                if not self.conn:
+                    return []
+            
             cursor = self.conn.cursor()
             cursor.execute('''
                 SELECT r.player_name, r.status, p.rating, r.user_id
@@ -317,6 +384,11 @@ class Database:
     def get_game_by_id(self, game_id):
         """Получение информации об игре по ID"""
         try:
+            if not self.conn:
+                self.connect()
+                if not self.conn:
+                    return None
+            
             cursor = self.conn.cursor()
             cursor.execute('''
                 SELECT id, game_name, game_date, game_type, max_players, buy_in, location, status
@@ -332,6 +404,11 @@ class Database:
     def remove_player_from_game(self, game_id, player_name):
         """Удаление игрока из игры"""
         try:
+            if not self.conn:
+                self.connect()
+                if not self.conn:
+                    return False
+            
             cursor = self.conn.cursor()
             cursor.execute('''
                 DELETE FROM game_registrations 
@@ -342,11 +419,21 @@ class Database:
             return cursor.rowcount > 0
         except Exception as e:
             logging.error(f"❌ Ошибка удаления игрока из игры: {e}")
+            try:
+                if self.conn:
+                    self.conn.rollback()
+            except:
+                self.conn = None
             return False
 
     def update_game_max_players(self, game_id, new_max_players):
         """Обновление максимального количества игроков"""
         try:
+            if not self.conn:
+                self.connect()
+                if not self.conn:
+                    return False
+            
             cursor = self.conn.cursor()
             cursor.execute('''
                 UPDATE games SET max_players = %s WHERE id = %s
@@ -356,11 +443,21 @@ class Database:
             return cursor.rowcount > 0
         except Exception as e:
             logging.error(f"❌ Ошибка обновления лимита игроков: {e}")
+            try:
+                if self.conn:
+                    self.conn.rollback()
+            except:
+                self.conn = None
             return False
 
     def cancel_game(self, game_id):
         """Отмена игры"""
         try:
+            if not self.conn:
+                self.connect()
+                if not self.conn:
+                    return False
+            
             cursor = self.conn.cursor()
             cursor.execute('''
                 UPDATE games SET status = 'cancelled' WHERE id = %s
@@ -370,16 +467,26 @@ class Database:
             return cursor.rowcount > 0
         except Exception as e:
             logging.error(f"❌ Ошибка отмены игры: {e}")
+            try:
+                if self.conn:
+                    self.conn.rollback()
+            except:
+                self.conn = None
             return False
 
     def get_all_game_registrations(self):
         """Получение всех записей на игры (для рассылки)"""
         try:
+            if not self.conn:
+                self.connect()
+                if not self.conn:
+                    return []
+            
             cursor = self.conn.cursor()
             cursor.execute('''
                 SELECT DISTINCT user_id 
                 FROM game_registrations 
-                WHERE user_id IS NOT NULL
+                WHERE user_id IS NOT NULL AND status = 'registered'
             ''')
             user_ids = [row[0] for row in cursor.fetchall()]
             cursor.close()
@@ -391,10 +498,15 @@ class Database:
     def get_game_registrations_by_game(self, game_id):
         """Получение user_id записавшихся на конкретную игру"""
         try:
+            if not self.conn:
+                self.connect()
+                if not self.conn:
+                    return []
+            
             cursor = self.conn.cursor()
             cursor.execute('''
                 SELECT user_id FROM game_registrations 
-                WHERE game_id = %s AND user_id IS NOT NULL
+                WHERE game_id = %s AND user_id IS NOT NULL AND status = 'registered'
             ''', (game_id,))
             user_ids = [row[0] for row in cursor.fetchall()]
             cursor.close()
@@ -402,6 +514,52 @@ class Database:
         except Exception as e:
             logging.error(f"❌ Ошибка получения user_id для игры: {e}")
             return []
+
+    def get_user_registrations(self, user_id):
+        """Получение всех записей пользователя на игры"""
+        try:
+            if not self.conn:
+                self.connect()
+                if not self.conn:
+                    return []
+            
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                SELECT gr.game_id, g.game_name, g.game_date, g.location, gr.player_name
+                FROM game_registrations gr
+                JOIN games g ON gr.game_id = g.id
+                WHERE gr.user_id = %s AND gr.status = 'registered' AND g.status = 'upcoming'
+                ORDER BY g.game_date
+            ''', (user_id,))
+            registrations = cursor.fetchall()
+            cursor.close()
+            return registrations
+        except Exception as e:
+            logging.error(f"❌ Ошибка получения записей пользователя: {e}")
+            return []
+
+    def delete_all_games(self):
+        """Удаление всех игр"""
+        try:
+            if not self.conn:
+                self.connect()
+                if not self.conn:
+                    return False
+            
+            cursor = self.conn.cursor()
+            cursor.execute('DELETE FROM game_registrations')
+            cursor.execute('DELETE FROM games')
+            self.conn.commit()
+            cursor.close()
+            return True
+        except Exception as e:
+            logging.error(f"❌ Ошибка удаления всех игр: {e}")
+            try:
+                if self.conn:
+                    self.conn.rollback()
+            except:
+                self.conn = None
+            return False
 
 # Глобальный экземпляр базы данных
 db = Database()

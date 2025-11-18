@@ -39,6 +39,7 @@ class UserStates(StatesGroup):
     admin_broadcast_message = State()
     user_register_for_game = State()
     user_select_game = State()
+    user_cancel_registration = State()
 
 # Загружаем данные из базы при запуске
 players_rating = db.get_all_players()
@@ -106,14 +107,14 @@ def get_main_keyboard(user_id):
     keyboard = ReplyKeyboardBuilder()
     keyboard.add(KeyboardButton(text="🎯 Мой рейтинг"))
     keyboard.add(KeyboardButton(text="🏆 Общий рейтинг"))
-    keyboard.add(KeyboardButton(text="🎮 Игры"))
     keyboard.add(KeyboardButton(text="📚 Правила покера"))
-    keyboard.add(KeyboardButton(text="🎯 Тест по покеру"))
+    keyboard.add(KeyboardButton(text="🧠 Тест по покеру"))
+    keyboard.add(KeyboardButton(text="🎮 Игры"))
     
     if is_admin(user_id):
         keyboard.add(KeyboardButton(text="👑 Админ-панель"))
     
-    keyboard.adjust(2)
+    keyboard.adjust(2, 2, 1)
     return keyboard.as_markup(resize_keyboard=True)
 
 # Админ клавиатура
@@ -124,6 +125,7 @@ def get_admin_keyboard():
     keyboard.add(KeyboardButton(text="🗑 Удалить игрока"))
     keyboard.add(KeyboardButton(text="📤 Загрузить карточку"))
     keyboard.add(KeyboardButton(text="🎮 Управление играми"))
+    keyboard.add(KeyboardButton(text="🗑️ Удалить все игры"))
     keyboard.add(KeyboardButton(text="📢 Рассылка"))
     keyboard.add(KeyboardButton(text="📊 Статистика БД"))
     keyboard.add(KeyboardButton(text="🔙 Главное меню"))
@@ -135,6 +137,7 @@ def get_games_keyboard():
     keyboard = ReplyKeyboardBuilder()
     keyboard.add(KeyboardButton(text="📅 Предстоящие игры"))
     keyboard.add(KeyboardButton(text="🎮 Записаться на игру"))
+    keyboard.add(KeyboardButton(text="❌ Отменить запись"))
     keyboard.add(KeyboardButton(text="👥 Мои записи"))
     keyboard.add(KeyboardButton(text="📋 Списки игроков"))
     keyboard.add(KeyboardButton(text="🔙 Главное меню"))
@@ -169,6 +172,18 @@ def get_games_selection_keyboard(games, action="select"):
         keyboard.add(InlineKeyboardButton(
             text=f"{game_name} ({game_date.strftime('%d.%m %H:%M')})",
             callback_data=f"{action}_{game_id}"
+        ))
+    keyboard.adjust(1)
+    return keyboard.as_markup()
+
+# Клавиатура для отмены записи
+def get_cancel_registration_keyboard(registrations):
+    keyboard = InlineKeyboardBuilder()
+    for reg in registrations:
+        game_id, game_name, game_date, location, player_name = reg
+        keyboard.add(InlineKeyboardButton(
+            text=f"{game_name} ({game_date.strftime('%d.%m %H:%M')})",
+            callback_data=f"cancelreg_{game_id}"
         ))
     keyboard.adjust(1)
     return keyboard.as_markup()
@@ -778,9 +793,9 @@ async def upcoming_games_handler(message: Message):
         current_players = len([r for r in registrations if r[1] == 'registered'])
         
         games_text += f"🎮 {game_name}\n"
-        games_text += f"   📅 {game_date.strftime('%d.%m.%Y %H:%M')}\n"
-        games_text += f"   👥 {current_players}/{max_players} игроков\n"
-        games_text += f"   📍 {location or 'Адрес не указан'}\n\n"
+        games_text += f"📅 {game_date.strftime('%d.%m.%Y %H:%M')}\n"
+        games_text += f"📍 {location or 'Адрес не указан'}\n"
+        games_text += f"👥 Игроков: {current_players}/{max_players}\n\n"
     
     await message.answer(games_text)
 
@@ -823,38 +838,68 @@ async def process_game_selection(callback: types.CallbackQuery, state: FSMContex
     except (ValueError, IndexError):
         await callback.message.answer("❌ Ошибка выбора игры")
 
+# Отмена записи на игру
+@dp.message(F.text == "❌ Отменить запись")
+async def cancel_registration_handler(message: Message):
+    user_id = message.from_user.id
+    registrations = db.get_user_registrations(user_id)
+    
+    if not registrations:
+        await message.answer("📭 У вас нет активных записей на игры")
+        return
+    
+    await message.answer(
+        "❌ Выберите игру для отмены записи:",
+        reply_markup=get_cancel_registration_keyboard(registrations)
+    )
+
+# Обработка отмены записи
+@dp.callback_query(F.data.startswith("cancelreg_"))
+async def process_cancel_registration(callback: types.CallbackQuery):
+    try:
+        game_id = int(callback.data.split('_')[1])
+        user_id = callback.from_user.id
+        
+        # Получаем запись пользователя
+        registrations = db.get_user_registrations(user_id)
+        player_name = None
+        
+        for reg in registrations:
+            if reg[0] == game_id:
+                player_name = reg[4]
+                break
+        
+        if not player_name:
+            await callback.message.answer("❌ Запись не найдена")
+            return
+        
+        # Удаляем запись
+        if db.remove_player_from_game(game_id, player_name):
+            game = db.get_game_by_id(game_id)
+            await callback.message.answer(
+                f"✅ Запись на игру отменена!\n\n"
+                f"🎮 {game[1]}\n"
+                f"📅 {game[2].strftime('%d.%m.%Y %H:%M')}\n"
+                f"👤 Игрок: {player_name}",
+                reply_markup=get_games_keyboard()
+            )
+        else:
+            await callback.message.answer("❌ Ошибка при отмене записи")
+        
+        await callback.answer()
+        
+    except (ValueError, IndexError):
+        await callback.message.answer("❌ Ошибка при отмене записи")
+
 # Мои записи
 @dp.message(F.text == "👥 Мои записи")
 async def my_registrations_handler(message: Message):
     """Показать игры, на которые записан пользователь"""
     try:
         user_id = message.from_user.id
+        registrations = db.get_user_registrations(user_id)
         
-        # Получаем все игры
-        games = db.get_upcoming_games()
-        if not games:
-            await message.answer("🎉 Нет активных игр")
-            return
-        
-        # Ищем записи пользователя
-        my_registrations = []
-        for game in games:
-            game_id, game_name, game_date, game_type, max_players, buy_in, location, status = game
-            registrations = db.get_game_registrations(game_id)
-            
-            # Проверяем, записан ли пользователь на эту игру
-            for reg_player_name, reg_status, rating, reg_user_id in registrations:
-                if reg_user_id == user_id and reg_status == 'registered':
-                    my_registrations.append({
-                        'game_id': game_id,
-                        'game_name': game_name,
-                        'game_date': game_date,
-                        'location': location,
-                        'player_name': reg_player_name
-                    })
-                    break
-        
-        if not my_registrations:
+        if not registrations:
             await message.answer(
                 "📭 Вы еще не записаны ни на одну игру\n\n"
                 "🎮 Используйте кнопку 'Записаться на игру' чтобы присоединиться к игре!",
@@ -865,11 +910,12 @@ async def my_registrations_handler(message: Message):
         # Формируем список записей
         registrations_text = "👥 ВАШИ ЗАПИСИ НА ИГРЫ:\n\n"
         
-        for reg in my_registrations:
-            registrations_text += f"🎮 {reg['game_name']}\n"
-            registrations_text += f"📅 {reg['game_date'].strftime('%d.%m.%Y %H:%M')}\n"
-            registrations_text += f"📍 {reg['location'] or 'Адрес не указан'}\n"
-            registrations_text += f"👤 Ваш ник: {reg['player_name']}\n\n"
+        for reg in registrations:
+            game_id, game_name, game_date, location, player_name = reg
+            registrations_text += f"🎮 {game_name}\n"
+            registrations_text += f"📅 {game_date.strftime('%d.%m.%Y %H:%M')}\n"
+            registrations_text += f"📍 {location or 'Адрес не указан'}\n"
+            registrations_text += f"👤 Ваш ник: {player_name}\n\n"
         
         await message.answer(registrations_text, reply_markup=get_games_keyboard())
         
@@ -1022,9 +1068,7 @@ async def show_game_list_handler(callback: types.CallbackQuery):
         if registrations:
             game_info += "📋 СПИСОК ИГРОКОВ:\n"
             for i, (name, status, rating, user_id) in enumerate(registrations, 1):
-                rating_text = f"⭐ {rating}" if rating else "⚪"
-                status_icon = "✅" if status == 'registered' else "⏳"
-                game_info += f"{i}. {name} {rating_text} {status_icon}\n"
+                game_info += f"{i}. {name}\n"
         else:
             game_info += "📭 Пока никто не записался"
         
@@ -1062,6 +1106,51 @@ async def manage_games_handler(message: Message):
         games_text + "🛠️ Выберите игру для управления:",
         reply_markup=get_games_selection_keyboard(games, "manage")
     )
+
+# Удаление всех игр
+@dp.message(F.text == "🗑️ Удалить все игры")
+async def delete_all_games_handler(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    
+    # Создаем клавиатуру с подтверждением
+    keyboard = InlineKeyboardBuilder()
+    keyboard.add(InlineKeyboardButton(text="✅ Да, удалить все", callback_data="confirm_delete_all"))
+    keyboard.add(InlineKeyboardButton(text="❌ Нет, отменить", callback_data="cancel_delete_all"))
+    keyboard.adjust(2)
+    
+    await message.answer(
+        "⚠️ ВНИМАНИЕ!\n\n"
+        "Вы собираетесь удалить ВСЕ игры и ВСЕ записи на них.\n"
+        "Это действие нельзя отменить!\n\n"
+        "Вы уверены?",
+        reply_markup=keyboard.as_markup()
+    )
+
+@dp.callback_query(F.data == "confirm_delete_all")
+async def confirm_delete_all_games(callback: types.CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        return
+    
+    if db.delete_all_games():
+        await callback.message.answer(
+            "✅ Все игры и записи успешно удалены!",
+            reply_markup=get_admin_keyboard()
+        )
+    else:
+        await callback.message.answer(
+            "❌ Ошибка при удалении игр",
+            reply_markup=get_admin_keyboard()
+        )
+    await callback.answer()
+
+@dp.callback_query(F.data == "cancel_delete_all")
+async def cancel_delete_all_games(callback: types.CallbackQuery):
+    await callback.message.answer(
+        "❌ Удаление всех игр отменено",
+        reply_markup=get_admin_keyboard()
+    )
+    await callback.answer()
 
 # Обработка управления игрой
 @dp.callback_query(F.data.startswith("manage_"))
@@ -1471,7 +1560,7 @@ async def rules_handler(message: Message):
         )
 
 # Обработка кнопки "Тест по покеру"
-@dp.message(F.text == "🎯 Тест по покеру")
+@dp.message(F.text == "🧠 Тест по покеру")
 async def poker_test_handler(message: Message, state: FSMContext):
     user_test_data[message.from_user.id] = {
         "current_question": 0,
