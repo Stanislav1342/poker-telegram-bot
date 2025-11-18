@@ -32,7 +32,8 @@ class UserStates(StatesGroup):
     # новые состояния для игр
     admin_create_game_name = State()
     admin_create_game_date = State()
-    admin_create_game_details = State()
+    admin_create_game_players = State()
+    admin_create_game_location = State()
     admin_remove_player_from_game = State()
     admin_update_game_limit = State()
     admin_broadcast_message = State()
@@ -704,33 +705,31 @@ async def process_game_date(message: Message, state: FSMContext):
             "👥 Введите максимальное количество игроков:\n\n"
             "Пример: 9, 18, 27"
         )
-        await state.set_state(UserStates.admin_create_game_details)
+        await state.set_state(UserStates.admin_create_game_players)
         
     except ValueError:
         await message.answer("❌ Неверный формат даты. Используйте: ДД.ММ.ГГГГ ЧЧ:ММ\nПример: 15.01.2024 19:30")
 
-@dp.message(UserStates.admin_create_game_details)
-async def process_game_details(message: Message, state: FSMContext):
+@dp.message(UserStates.admin_create_game_players)
+async def process_game_players(message: Message, state: FSMContext):
     try:
         max_players = int(message.text.strip())
-        data = await state.get_data()
-        game_name = data.get('game_name')
-        game_date = data.get('game_date')
         
         if max_players <= 0:
             await message.answer("❌ Количество игроков должно быть больше 0")
             return
         
+        await state.update_data(max_players=max_players)
         await message.answer(
             "📍 Введите адрес проведения игры:\n\n"
             "Пример: 'ул. Покерная, 123' или 'Покерный клуб Magnum'"
         )
-        await state.update_data(max_players=max_players)
+        await state.set_state(UserStates.admin_create_game_location)
         
     except ValueError:
         await message.answer("❌ Введите корректное число игроков")
 
-@dp.message(UserStates.admin_create_game_details)
+@dp.message(UserStates.admin_create_game_location)
 async def process_game_location(message: Message, state: FSMContext):
     location = message.text.strip()
     data = await state.get_data()
