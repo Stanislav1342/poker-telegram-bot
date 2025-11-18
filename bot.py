@@ -656,8 +656,8 @@ async def process_game_host(message: Message, state: FSMContext):
         game_type="Texas Holdem",
         buy_in=price,
         location=location,
-        host=host,  # ★★★ ПЕРЕДАЕМ ВЕДУЩЕГО ★★★
-        end_time=end_time,  # ★★★ ПЕРЕДАЕМ ВРЕМЯ ОКОНЧАНИЯ ★★★
+        host=host,
+        end_time=end_time,
         created_by=message.from_user.id
     )
     
