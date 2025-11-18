@@ -793,11 +793,166 @@ async def process_game_selection(callback: types.CallbackQuery, state: FSMContex
             f"👥 Свободно мест: {max_players - current_players}/{max_players}\n\n"
             f"👤 Введите ваш игровой никнейм:"
         )
-        await state.set_state(UserStates.waiting_for_player_name)
+        await state.set_state(UserStates.user_register_for_game)
         await callback.answer()
         
     except (ValueError, IndexError):
         await callback.message.answer("❌ Ошибка выбора игры")
+
+# ========== ИСПРАВЛЕННЫЙ ОБРАБОТЧИК ДЛЯ ЗАПИСИ НА ИГРУ ==========
+
+@dp.message(UserStates.user_register_for_game)
+async def process_game_registration_name(message: Message, state: FSMContext):
+    """Обработка имени игрока для записи на игру"""
+    try:
+        player_name = message.text.strip()
+        data = await state.get_data()
+        game_id = data.get('game_id')
+        
+        if not game_id:
+            await message.answer("❌ Ошибка: игра не найдена")
+            await state.clear()
+            return
+        
+        # Проверяем существует ли игрок в базе
+        search_name = normalize_name(player_name)
+        found_player = None
+        
+        for name in players_rating:
+            if normalize_name(name) == search_name:
+                found_player = name
+                break
+        
+        if not found_player:
+            await message.answer(
+                f"❌ Игрок '{player_name}' не найден в базе.\n\n"
+                f"📞 Обратитесь к администратору для добавления в базу: @babzuni777",
+                reply_markup=get_games_keyboard()
+            )
+            await state.clear()
+            return
+        
+        # Записываем игрока на игру
+        success, result_message = db.register_player_for_game(
+            game_id, found_player, message.from_user.id
+        )
+        
+        if success:
+            # Получаем актуальную информацию об игре
+            game = db.get_game_by_id(game_id)
+            registrations = db.get_game_registrations(game_id)
+            current_players = len([r for r in registrations if r[1] == 'registered'])
+            
+            success_text = (
+                f"✅ {result_message}\n\n"
+                f"🎮 {game[1]}\n"
+                f"📅 {game[2].strftime('%d.%m.%Y %H:%M')}\n"
+                f"👤 Ваш ник: {found_player}\n"
+                f"👥 Теперь игроков: {current_players}/{game[4]}"
+            )
+            await message.answer(success_text, reply_markup=get_games_keyboard())
+        else:
+            await message.answer(result_message, reply_markup=get_games_keyboard())
+        
+        await state.clear()
+        
+    except Exception as e:
+        logging.error(f"❌ Ошибка записи на игру: {e}")
+        await message.answer(
+            "❌ Произошла ошибка при записи на игру",
+            reply_markup=get_games_keyboard()
+        )
+        await state.clear()
+
+# ========== ИСПРАВЛЕННЫЙ ОБРАБОТЧИК ДЛЯ "МОЙ РЕЙТИНГ" ==========
+
+@dp.message(UserStates.waiting_for_player_name)
+async def process_player_name(message: Message, state: FSMContext):
+    """Обработка ввода имени игрока для просмотра рейтинга"""
+    try:
+        player_name = message.text.strip()
+        
+        # Нормализуем имя для поиска (учет е/ё)
+        search_name = normalize_name(player_name)
+        
+        # Ищем игрока в базе данных
+        found_player = None
+        player_rating = None
+        
+        # Ищем по нормализованному имени
+        for name, rating in players_rating.items():
+            if normalize_name(name) == search_name:
+                found_player = name
+                player_rating = rating
+                break
+        
+        if not found_player:
+            await message.answer(
+                f"❌ Игрок '{player_name}' не найден в базе.\n\n"
+                f"📋 Доступные игроки:\n" + 
+                "\n".join([f"• {name}" for name in players_rating.keys()]) +
+                f"\n\n🔍 Проверьте правильность написания имени",
+                reply_markup=get_main_keyboard(message.from_user.id)
+            )
+            await state.clear()
+            return
+        
+        # Получаем позицию в рейтинге
+        position = get_player_position(found_player)
+        
+        # Получаем карточку игрока если есть
+        player_card = db.get_player_card(found_player)
+        
+        # Формируем текст ответа
+        rating_text = (
+            f"👤 {found_player}\n"
+            f"⭐️ Рейтинг: {player_rating}\n"
+            f"🏆 Место в рейтинге: {position}\n"
+        )
+        
+        # Отправляем карточку если есть, иначе просто текст
+        if player_card:
+            try:
+                await message.answer_photo(
+                    player_card,
+                    caption=rating_text,
+                    reply_markup=get_main_keyboard(message.from_user.id)
+                )
+            except Exception as e:
+                logging.error(f"❌ Ошибка отправки карточки: {e}")
+                await message.answer(
+                    f"📄 {rating_text}\n\n"
+                    f"⚠️ Карточка временно недоступна",
+                    reply_markup=get_main_keyboard(message.from_user.id)
+                )
+        else:
+            await message.answer(
+                f"📄 {rating_text}\n\n"
+                f"🖼 Карточка игрока не загружена",
+                reply_markup=get_main_keyboard(message.from_user.id)
+            )
+        
+        await state.clear()
+        
+    except Exception as e:
+        logging.error(f"❌ Ошибка обработки имени игрока: {e}")
+        await message.answer(
+            "❌ Произошла ошибка при поиске игрока",
+            reply_markup=get_main_keyboard(message.from_user.id)
+        )
+        await state.clear()
+
+def get_player_position(player_name):
+    """Определение позиции игрока в рейтинге"""
+    try:
+        sorted_players = sorted(players_rating.items(), key=lambda x: x[1], reverse=True)
+        for position, (name, _) in enumerate(sorted_players, 1):
+            if name == player_name:
+                return position
+        return None
+    except Exception as e:
+        logging.error(f"❌ Ошибка определения позиции: {e}")
+        return None
 
 # Отмена записи на игру
 @dp.message(F.text == "❌ Отменить запись")
@@ -1697,14 +1852,6 @@ async def finish_test(message: Message, state: FSMContext):
     await message.answer(result_text, reply_markup=get_main_keyboard(user_id))
     await state.clear()
 
-# Вспомогательная функция для определения позиции
-def get_player_position(player_name):
-    sorted_players = sorted(players_rating.items(), key=lambda x: x[1], reverse=True)
-    for position, (name, _) in enumerate(sorted_players, 1):
-        if name == player_name:
-            return position
-    return None
-
 # Обработка кнопки "Главное меню"
 @dp.message(F.text == "🔙 Главное меню")
 async def main_menu_handler(message: Message):
@@ -1733,7 +1880,7 @@ async def cleanup_processed_starts():
 
 async def main():
     logging.basicConfig(level=logging.INFO)
-    logging.info("🤖 Бот запущен с обновленной системой рассылки!")
+    logging.info("🤖 Бот запущен с исправленной системой рейтинга и записи на игры!")
     
     asyncio.create_task(cleanup_processed_starts())
     
