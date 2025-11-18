@@ -65,6 +65,7 @@ class Database:
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS games (
                     id SERIAL PRIMARY KEY,
+                    game_name VARCHAR(200) NOT NULL,
                     game_date TIMESTAMP NOT NULL,
                     game_type VARCHAR(50) DEFAULT 'Texas Holdem',
                     max_players INTEGER NOT NULL,
@@ -214,14 +215,14 @@ class Database:
             return {}
 
     # НОВЫЕ МЕТОДЫ ДЛЯ ИГР
-    def create_game(self, game_date, max_players, game_type, buy_in, location, created_by):
+    def create_game(self, game_name, game_date, max_players, game_type, buy_in, location, created_by):
         """Создание новой игры"""
         try:
             cursor = self.conn.cursor()
             cursor.execute('''
-                INSERT INTO games (game_date, max_players, game_type, buy_in, location, created_by)
-                VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
-            ''', (game_date, max_players, game_type, buy_in, location, created_by))
+                INSERT INTO games (game_name, game_date, max_players, game_type, buy_in, location, created_by)
+                VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id
+            ''', (game_name, game_date, max_players, game_type, buy_in, location, created_by))
             game_id = cursor.fetchone()[0]
             self.conn.commit()
             cursor.close()
@@ -267,7 +268,7 @@ class Database:
         try:
             cursor = self.conn.cursor()
             cursor.execute('''
-                SELECT id, game_date, game_type, max_players, buy_in, location, status
+                SELECT id, game_name, game_date, game_type, max_players, buy_in, location, status
                 FROM games 
                 WHERE game_date > NOW() AND status = 'upcoming'
                 ORDER BY game_date
@@ -302,7 +303,7 @@ class Database:
         try:
             cursor = self.conn.cursor()
             cursor.execute('''
-                SELECT id, game_date, game_type, max_players, buy_in, location, status
+                SELECT id, game_name, game_date, game_type, max_players, buy_in, location, status
                 FROM games WHERE id = %s
             ''', (game_id,))
             game = cursor.fetchone()
