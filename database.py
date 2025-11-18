@@ -269,22 +269,27 @@ class Database:
             return False, "❌ Ошибка при записи на игру"
 
     def get_upcoming_games(self):
-        """Получение предстоящих игр"""
         try:
             cursor = self.conn.cursor()
             cursor.execute('''
                 SELECT id, game_name, game_date, game_type, max_players, buy_in, location, status
                 FROM games 
-                WHERE game_date > NOW() AND status = 'upcoming'
+                WHERE status = 'upcoming'
                 ORDER BY game_date
             ''')
             games = cursor.fetchall()
             cursor.close()
+            
+            # Логируем для отладки
+            logging.info(f"📊 Найдено игр: {len(games)}")
+            for game in games:
+                logging.info(f"🎮 Игра: {game[1]}, Дата: {game[2]}, Статус: {game[7]}")
+            
             return games
         except Exception as e:
             logging.error(f"❌ Ошибка получения игр: {e}")
             return []
-
+    
     def get_game_registrations(self, game_id):
         """Получение списка записавшихся на игру"""
         try:
