@@ -34,6 +34,8 @@ class UserStates(StatesGroup):
     admin_create_game_date = State()
     admin_create_game_players = State()
     admin_create_game_location = State()
+    admin_create_game_price = State()  # ★★★ НОВОЕ СОСТОЯНИЕ ДЛЯ ЦЕНЫ ★★★
+    admin_create_game_host = State()   # ★★★ НОВОЕ СОСТОЯНИЕ ДЛЯ ВЕДУЩЕГО ★★★
     admin_remove_player_from_game = State()
     admin_update_game_limit = State()
     
@@ -186,7 +188,7 @@ def get_game_management_keyboard(game_id):
 def get_games_selection_keyboard(games, action="select"):
     keyboard = InlineKeyboardBuilder()
     for game in games:
-        game_id, game_name, game_date, game_type, max_players, buy_in, location, status = game
+        game_id, game_name, game_date, game_type, max_players, buy_in, location, status, host = game
         keyboard.add(InlineKeyboardButton(
             text=f"{game_name} ({game_date.strftime('%d.%m %H:%M')})",
             callback_data=f"{action}_{game_id}"
@@ -470,20 +472,21 @@ async def upload_card_handler(message: Message):
         "Пример подписи к фото: Рунге"
     )
 
-# Обработка загруженной карточки
+# ★★★ ИСПРАВЛЕННЫЙ ОБРАБОТЧИК ФОТО ★★★
 @dp.message(F.photo)
-async def process_player_card(message: Message, state: FSMContext):
-    """Обработка загруженной карточки игрока"""
+async def process_photo_message(message: Message, state: FSMContext):
+    """Обработка всех фото сообщений"""
     
-    # ★★★ ПРОВЕРЯЕМ, НЕ НАХОДИМСЯ ЛИ В РЕЖИМЕ РАССЫЛКИ ★★★
+    # ★★★ ПЕРВОЕ - ПРОВЕРЯЕМ РАССЫЛКУ ★★★
     current_state = await state.get_state()
     if current_state == UserStates.admin_broadcast_message.state:
-        # Проверяем флаг рассылки
+        # Если в состоянии рассылки - обрабатываем как рассылку
         data = await state.get_data()
         if data.get('is_broadcast'):
-            # Если это рассылка - пропускаем обработку карточки
+            await broadcast_content_handler(message, state)
             return
     
+    # ★★★ ВТОРОЕ - ПРОВЕРЯЕМ АДМИНА И КАРТОЧКИ ★★★
     if not is_admin(message.from_user.id):
         return
     
@@ -532,7 +535,7 @@ async def admin_games_handler(message: Message):
     
     await message.answer("👑 Админ-панель игр:", reply_markup=get_admin_games_keyboard())
 
-# Создание игры (админ)
+# ★★★ ОБНОВЛЕННОЕ СОЗДАНИЕ ИГРЫ ★★★
 @dp.message(F.text == "➕ Создать игру")
 async def create_game_handler(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
@@ -554,18 +557,28 @@ async def process_game_name(message: Message, state: FSMContext):
     await state.update_data(game_name=game_name)
     await message.answer(
         "📅 Введите дату и время для игры:\n\n"
-        "Формат: ДД.ММ.ГГГГ ЧЧ:ММ\n"
-        "Пример: 23.11.2024 18:00"
+        "Формат: ДД.ММ ЧЧ:ММ-ЧЧ:ММ\n"
+        "Пример: 23.04 18:00-23:30"
     )
     await state.set_state(UserStates.admin_create_game_date)
 
 @dp.message(UserStates.admin_create_game_date)
 async def process_game_date(message: Message, state: FSMContext):
     try:
-        date_str = message.text.strip()
-        game_date = datetime.strptime(date_str, "%d.%m.%Y %H:%M")
+        date_time_str = message.text.strip()
+        # Разделяем дату и время
+        date_part, time_part = date_time_str.split(' ')
+        start_time_str, end_time_str = time_part.split('-')
         
-        await state.update_data(game_date=game_date)
+        # Получаем текущий год
+        current_year = datetime.now().year
+        # Создаем полную дату начала
+        start_datetime = datetime.strptime(f"{date_part}.{current_year} {start_time_str}", "%d.%m.%Y %H:%M")
+        
+        await state.update_data(
+            game_date=start_datetime,
+            end_time=end_time_str
+        )
         await message.answer(
             "👥 Введите максимальное количество игроков:\n\n"
             "Пример: 9, 18, 27"
@@ -573,7 +586,7 @@ async def process_game_date(message: Message, state: FSMContext):
         await state.set_state(UserStates.admin_create_game_players)
         
     except ValueError:
-        await message.answer("❌ Неверный формат даты. Используйте: ДД.ММ.ГГГГ ЧЧ:ММ\nПример: 23.11.2024 18:00")
+        await message.answer("❌ Неверный формат. Используйте: ДД.ММ ЧЧ:ММ-ЧЧ:ММ\nПример: 23.04 18:00-23:30")
 
 @dp.message(UserStates.admin_create_game_players)
 async def process_game_players(message: Message, state: FSMContext):
@@ -597,10 +610,43 @@ async def process_game_players(message: Message, state: FSMContext):
 @dp.message(UserStates.admin_create_game_location)
 async def process_game_location(message: Message, state: FSMContext):
     location = message.text.strip()
+    await state.update_data(location=location)
+    await message.answer(
+        "💸 Введите стоимость участия в рублях:\n\n"
+        "Пример: 1200, 1500, 2000"
+    )
+    await state.set_state(UserStates.admin_create_game_price)
+
+@dp.message(UserStates.admin_create_game_price)
+async def process_game_price(message: Message, state: FSMContext):
+    try:
+        price = int(message.text.strip())
+        
+        if price <= 0:
+            await message.answer("❌ Стоимость должна быть больше 0")
+            return
+        
+        await state.update_data(price=price)
+        await message.answer(
+            "🎤 Введите имя ведущего игры:\n\n"
+            "Пример: Капоне, Стас, Иван"
+        )
+        await state.set_state(UserStates.admin_create_game_host)
+        
+    except ValueError:
+        await message.answer("❌ Введите корректную стоимость (число)")
+
+@dp.message(UserStates.admin_create_game_host)
+async def process_game_host(message: Message, state: FSMContext):
+    host = message.text.strip()
     data = await state.get_data()
+    
     game_name = data.get('game_name')
     game_date = data.get('game_date')
     max_players = data.get('max_players')
+    location = data.get('location')
+    price = data.get('price')
+    end_time = data.get('end_time')
     
     # Создаем игру
     game_id = db.create_game(
@@ -608,8 +654,9 @@ async def process_game_location(message: Message, state: FSMContext):
         game_date=game_date,
         max_players=max_players,
         game_type="Texas Holdem",
-        buy_in=1200.00,  # ★★★ ДОБАВЛЯЕМ СТОИМОСТЬ ПО УМОЛЧАНИЮ ★★★
+        buy_in=price,
         location=location,
+        host=host,  # ★★★ ПЕРЕДАЕМ ВЕДУЩЕГО ★★★
         created_by=message.from_user.id
     )
     
@@ -617,9 +664,11 @@ async def process_game_location(message: Message, state: FSMContext):
         await message.answer(
             f"✅ Игра успешно создана!\n\n"
             f"🎮 {game_name}\n"
-            f"📅 {game_date.strftime('%d.%m.%Y %H:%M')}\n"
+            f"📅 {game_date.strftime('%d.%m')} {game_date.strftime('%H:%M')}-{end_time}\n"
             f"👥 Макс. игроков: {max_players}\n"
-            f"📍 {location}",
+            f"📍 {location}\n"
+            f"💸 {price} рублей\n"
+            f"🎤 Ведущий: {host}",
             reply_markup=get_admin_games_keyboard()
         )
     else:
@@ -638,7 +687,7 @@ async def upcoming_games_handler(message: Message):
     
     games_text = "🎯 ПРЕДСТОЯЩИЕ ИГРЫ:\n\n"
     for game in games:
-        game_id, game_name, game_date, game_type, max_players, buy_in, location, status = game
+        game_id, game_name, game_date, game_type, max_players, buy_in, location, status, host, end_time = game
         registrations = db.get_game_registrations(game_id)
         current_players = len([r for r in registrations if r[1] == 'registered'])
         
@@ -646,9 +695,9 @@ async def upcoming_games_handler(message: Message):
         games_text += f"🌃 {get_russian_weekday(game_date)} {game_date.strftime('%d.%m')}\n"
         games_text += f"{game_name} 🃏\n"
         games_text += f"{location}\n"
-        games_text += f"🕢 {game_date.strftime('%H:%M')}-22:00\n"
+        games_text += f"🕢 {game_date.strftime('%H:%M')}-{end_time or '22:00'}\n"
         games_text += f"💸 {int(buy_in)} рублей\n"
-        games_text += f"Ведущий: Капоне\n"
+        games_text += f"Ведущий: {host or 'Капоне'}\n"
         games_text += f"👥 Игроков: {current_players}/{max_players}\n\n"
     
     await message.answer(games_text)
@@ -668,7 +717,7 @@ async def register_game_handler(message: Message, state: FSMContext):
     )
     await state.set_state(UserStates.user_select_game)
 
-# ОБНОВЛЕННАЯ ОБРАБОТКА ВЫБОРА ИГРЫ С ПРОВЕРКОМ МЕСТ И СООБЩЕНИЕМ ДЛЯ АДМИНА
+# ОБНОВЛЕННАЯ ОБРАБОТКА ВЫБОРА ИГРЫ
 @dp.callback_query(F.data.startswith("register_"))
 async def process_game_selection(callback: types.CallbackQuery, state: FSMContext):
     try:
@@ -701,8 +750,9 @@ async def process_game_selection(callback: types.CallbackQuery, state: FSMContex
             f"🌃 {get_russian_weekday(game[2])} {game[2].strftime('%d.%m')}\n"
             f"{game[1]} 🃏\n"
             f"{game[6]}\n"
-            f"🕢 {game[2].strftime('%H:%M')}-22:00\n"
+            f"🕢 {game[2].strftime('%H:%M')}-{game[9] or '22:00'}\n"
             f"💸 {int(game[5])} рублей\n"
+            f"🎤 Ведущий: {game[8] or 'Капоне'}\n"
             f"👥 Свободно мест: {max_players - current_players}/{max_players}\n\n"
             f"👤 Введите ваш игровой никнейм:"
         )
@@ -788,12 +838,15 @@ async def my_registrations_handler(message: Message):
             game_id, game_name, game_date, location, player_name = reg
             game = db.get_game_by_id(game_id)
             buy_in = game[5] if game else 1200
+            host = game[8] if game else 'Капоне'
+            end_time = game[9] if game else '22:00'
             
             registrations_text += f"🌃 {get_russian_weekday(game_date)} {game_date.strftime('%d.%m')}\n"
             registrations_text += f"{game_name} 🃏\n"
             registrations_text += f"{location}\n"
-            registrations_text += f"🕢 {game_date.strftime('%H:%M')}-22:00\n"
+            registrations_text += f"🕢 {game_date.strftime('%H:%M')}-{end_time}\n"
             registrations_text += f"💸 {int(buy_in)} рублей\n"
+            registrations_text += f"🎤 Ведущий: {host}\n"
             registrations_text += f"👤 Ваш ник: {player_name}\n\n"
         
         await message.answer(registrations_text, reply_markup=get_games_keyboard())
@@ -829,8 +882,9 @@ async def process_player_name(message: Message, state: FSMContext):
                 f"🌃 {get_russian_weekday(game[2])} {game[2].strftime('%d.%m')}\n"
                 f"{game[1]} 🃏\n"
                 f"{game[6]}\n"
-                f"🕢 {game[2].strftime('%H:%M')}-22:00\n"
+                f"🕢 {game[2].strftime('%H:%M')}-{game[9] or '22:00'}\n"
                 f"💸 {int(game[5])} рублей\n"
+                f"🎤 Ведущий: {game[8] or 'Капоне'}\n"
                 f"👤 Ваш ник: {player_name}\n"
                 f"👥 Записано: {current_players}/{max_players} игроков",
                 reply_markup=get_games_keyboard()
@@ -948,8 +1002,9 @@ async def show_game_list_handler(callback: types.CallbackQuery):
         game_info = f"🌃 {get_russian_weekday(game[2])} {game[2].strftime('%d.%m')}\n"
         game_info += f"{game[1]} 🃏\n"
         game_info += f"{game[6]}\n"
-        game_info += f"🕢 {game[2].strftime('%H:%M')}-22:00\n"
+        game_info += f"🕢 {game[2].strftime('%H:%M')}-{game[9] or '22:00'}\n"
         game_info += f"💸 {int(game[5])} рублей\n"
+        game_info += f"🎤 Ведущий: {game[8] or 'Капоне'}\n"
         game_info += f"👥 Игроков: {len(registrations)}/{game[4]}\n\n"
         
         if registrations:
@@ -980,7 +1035,7 @@ async def manage_games_handler(message: Message):
     
     games_text = "📅 АКТИВНЫЕ ИГРЫ:\n\n"
     for game in games:
-        game_id, game_name, game_date, game_type, max_players, buy_in, location, status = game
+        game_id, game_name, game_date, game_type, max_players, buy_in, location, status, host, end_time = game
         registrations = db.get_game_registrations(game_id)
         current_players = len([r for r in registrations if r[1] == 'registered'])
         
@@ -1009,7 +1064,7 @@ async def admin_all_players_handler(message: Message):
     all_players_text = "📋 СПИСКИ ИГРОКОВ НА ВСЕ ИГРЫ:\n\n"
     
     for game in games:
-        game_id, game_name, game_date, game_type, max_players, buy_in, location, status = game
+        game_id, game_name, game_date, game_type, max_players, buy_in, location, status, host, end_time = game
         registrations = db.get_game_registrations(game_id)
         
         all_players_text += f"🎮 {game_name}\n"
@@ -1290,7 +1345,7 @@ async def broadcast_game_select_handler(callback: types.CallbackQuery):
     # Создаем клавиатуру с играми для рассылки
     keyboard = InlineKeyboardBuilder()
     for game in games:
-        game_id, game_name, game_date, game_type, max_players, buy_in, location, status = game
+        game_id, game_name, game_date, game_type, max_players, buy_in, location, status, host, end_time = game
         registrations = db.get_game_registrations(game_id)
         current_players = len([r for r in registrations if r[1] == 'registered'])
         
@@ -1346,7 +1401,7 @@ async def broadcast_specific_game_handler(callback: types.CallbackQuery, state: 
         await callback.message.answer("❌ Ошибка при выборе игры")
         await callback.answer()
 
-# ★★★ ОБРАБОТЧИК ДЛЯ РАССЫЛКИ (ВСЕ ТИПЫ СООБЩЕНИЙ) ★★★
+# ★★★ ИСПРАВЛЕННЫЙ ОБРАБОТЧИК ДЛЯ РАССЫЛКИ ★★★
 @dp.message(UserStates.admin_broadcast_message)
 async def broadcast_content_handler(message: Message, state: FSMContext):
     """Обработка контента для рассылки"""
