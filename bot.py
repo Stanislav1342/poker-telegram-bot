@@ -92,7 +92,7 @@ user_test_data = {}
 # Функция для нормализации имен (е/ё)
 def normalize_name(name):
     """Нормализация имени: заменяет ё на е и приводит к нижнему регистру"""
-    return name.lower().replace('ё', 'е')
+    return name.lower().replace('ё', 'e')
 
 # Проверка является ли пользователь админом
 def is_admin(user_id):
@@ -959,11 +959,12 @@ async def show_game_lists_handler(message: Message):
         "Нажмите на команду чтобы посмотреть список игроков"
     )
 
-# Обработка команд /list_{game_id}
-@dp.message(Command(startswith="list_"))
+# ========== ИСПРАВЛЕННЫЕ КОМАНДЫ ДЛЯ ИГР ==========
+
+@dp.message(Command("list_"))
 async def show_game_list_handler(message: Message, command: CommandObject):
     try:
-        game_id = int(command.command.split('_')[1])
+        game_id = int(command.args)
         game = db.get_game_by_id(game_id)
         
         if not game:
@@ -989,13 +990,12 @@ async def show_game_list_handler(message: Message, command: CommandObject):
         await message.answer(game_info)
         
     except (ValueError, IndexError):
-        await message.answer("❌ Неверный формат команды")
+        await message.answer("❌ Неверный формат команды. Используйте: /list_1")
 
-# Обработка команд /register_{game_id}
-@dp.message(Command(startswith="register_"))
+@dp.message(Command("register_"))
 async def quick_register_handler(message: Message, command: CommandObject, state: FSMContext):
     try:
-        game_id = int(command.command.split('_')[1])
+        game_id = int(command.args)
         game = db.get_game_by_id(game_id)
         
         if not game:
@@ -1008,7 +1008,202 @@ async def quick_register_handler(message: Message, command: CommandObject, state
         await state.set_state(UserStates.waiting_for_player_name)
         
     except (ValueError, IndexError):
-        await message.answer("❌ Неверный формат команды")
+        await message.answer("❌ Неверный формат команды. Используйте: /register_1")
+
+@dp.message(Command("limit_"))
+async def change_game_limit_handler(message: Message, command: CommandObject, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    try:
+        game_id = int(command.args)
+        game = db.get_game_by_id(game_id)
+        
+        if not game:
+            await message.answer("❌ Игра не найдена")
+            return
+        
+        await state.update_data(game_id=game_id)
+        await message.answer(
+            f"🎮 Игра #{game_id}\n"
+            f"📅 {game[1].strftime('%d.%m.%Y %H:%M')}\n"
+            f"👥 Текущий лимит: {game[3]} игроков\n\n"
+            "Введите новое максимальное количество игроков:"
+        )
+        await state.set_state(UserStates.admin_update_game_limit)
+        
+    except (ValueError, IndexError):
+        await message.answer("❌ Неверный формат команды. Используйте: /limit_1")
+
+@dp.message(UserStates.admin_update_game_limit)
+async def process_game_limit_update(message: Message, state: FSMContext):
+    try:
+        new_limit = int(message.text.strip())
+        data = await state.get_data()
+        game_id = data.get('game_id')
+        
+        if new_limit <= 0:
+            await message.answer("❌ Лимит должен быть больше 0")
+            return
+        
+        if db.update_game_max_players(game_id, new_limit):
+            await message.answer(
+                f"✅ Лимит игроков обновлен!\n"
+                f"🎮 Игра #{game_id}\n"
+                f"👥 Новый лимит: {new_limit} игроков",
+                reply_markup=get_admin_games_keyboard()
+            )
+        else:
+            await message.answer("❌ Ошибка при обновлении лимита")
+        
+        await state.clear()
+        
+    except ValueError:
+        await message.answer("❌ Введите корректное число")
+
+@dp.message(Command("remove_"))
+async def remove_player_game_handler(message: Message, command: CommandObject, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    try:
+        game_id = int(command.args)
+        game = db.get_game_by_id(game_id)
+        
+        if not game:
+            await message.answer("❌ Игра не найдена")
+            return
+        
+        registrations = db.get_game_registrations(game_id)
+        
+        if not registrations:
+            await message.answer("❌ На этой игре нет записавшихся игроков")
+            return
+        
+        players_list = "\n".join([f"• {name}" for name, status, rating, user_id in registrations])
+        
+        await state.update_data(game_id=game_id)
+        await message.answer(
+            f"🎮 Игра #{game_id}\n"
+            f"📅 {game[1].strftime('%d.%m.%Y %H:%M')}\n\n"
+            f"📋 Записанные игроки:\n{players_list}\n\n"
+            "Введите имя игрока для удаления с игры:"
+        )
+        await state.set_state(UserStates.admin_remove_player_from_game)
+        
+    except (ValueError, IndexError):
+        await message.answer("❌ Неверный формат команды. Используйте: /remove_1")
+
+@dp.message(UserStates.admin_remove_player_from_game)
+async def process_remove_player_from_game(message: Message, state: FSMContext):
+    player_name = message.text.strip()
+    data = await state.get_data()
+    game_id = data.get('game_id')
+    
+    if db.remove_player_from_game(game_id, player_name):
+        # Отправляем уведомление игроку, если есть user_id
+        registrations = db.get_game_registrations(game_id)
+        user_id_to_notify = None
+        for name, status, rating, user_id in registrations:
+            if name == player_name and user_id:
+                user_id_to_notify = user_id
+                break
+        
+        if user_id_to_notify:
+            try:
+                game = db.get_game_by_id(game_id)
+                await bot.send_message(
+                    user_id_to_notify,
+                    f"❌ ВАС УДАЛИЛИ С ИГРЫ\n\n"
+                    f"🎮 Игра #{game_id}\n"
+                    f"📅 {game[1].strftime('%d.%m.%Y %H:%M')}\n\n"
+                    f"Администратор удалил вас с этой игры."
+                )
+            except Exception as e:
+                logging.error(f"❌ Ошибка отправки уведомления пользователю {user_id_to_notify}: {e}")
+        
+        await message.answer(
+            f"✅ Игрок '{player_name}' удален с игры #{game_id}",
+            reply_markup=get_admin_games_keyboard()
+        )
+    else:
+        await message.answer(
+            f"❌ Игрок '{player_name}' не найден на игре #{game_id}",
+            reply_markup=get_admin_games_keyboard()
+        )
+    
+    await state.clear()
+
+@dp.message(Command("cancel_"))
+async def cancel_specific_game_handler(message: Message, command: CommandObject):
+    if not is_admin(message.from_user.id):
+        return
+    
+    try:
+        game_id = int(command.args)
+        game = db.get_game_by_id(game_id)
+        
+        if not game:
+            await message.answer("❌ Игра не найдена")
+            return
+        
+        if db.cancel_game(game_id):
+            # Рассылка уведомлений всем записавшимся
+            registrations = db.get_game_registrations(game_id)
+            user_ids = [user_id for name, status, rating, user_id in registrations if user_id]
+            
+            cancelled_count = 0
+            for user_id in user_ids:
+                try:
+                    await bot.send_message(
+                        user_id,
+                        f"❌ ИГРА ОТМЕНЕНА\n\n"
+                        f"🎮 Игра #{game_id}\n"
+                        f"📅 {game[1].strftime('%d.%m.%Y %H:%M')}\n\n"
+                        f"Игра была отменена администратором."
+                    )
+                    cancelled_count += 1
+                except Exception as e:
+                    logging.error(f"❌ Ошибка отправки уведомления пользователю {user_id}: {e}")
+            
+            await message.answer(
+                f"✅ Игра #{game_id} отменена!\n"
+                f"📨 Уведомления отправлены: {cancelled_count}/{len(user_ids)} игрокам",
+                reply_markup=get_admin_games_keyboard()
+            )
+        else:
+            await message.answer("❌ Ошибка при отмене игры")
+        
+    except (ValueError, IndexError):
+        await message.answer("❌ Неверный формат команды. Используйте: /cancel_1")
+
+@dp.message(Command("broadcast_"))
+async def broadcast_specific_game_handler(message: Message, command: CommandObject, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    try:
+        game_id = int(command.args)
+        game = db.get_game_by_id(game_id)
+        
+        if not game:
+            await message.answer("❌ Игра не найдена")
+            return
+        
+        user_ids = db.get_game_registrations_by_game(game_id)
+        
+        await state.update_data(broadcast_type=f"game_{game_id}", user_ids=user_ids)
+        
+        await message.answer(
+            f"📢 Рассылка по игре #{game_id}\n"
+            f"📅 {game[1].strftime('%d.%m.%Y %H:%M')}\n"
+            f"👥 Получателей: {len(user_ids)}\n\n"
+            "Введите сообщение для рассылки:"
+        )
+        await state.set_state(UserStates.admin_broadcast_message)
+        
+    except (ValueError, IndexError):
+        await message.answer("❌ Неверный формат команды. Используйте: /broadcast_1")
 
 # ========== АДМИН-УПРАВЛЕНИЕ ИГРАМИ ==========
 
@@ -1066,57 +1261,6 @@ async def update_game_limit_handler(message: Message, state: FSMContext):
         "Нажмите на команду чтобы изменить лимит для игры"
     )
 
-@dp.message(Command(startswith="limit_"))
-async def change_game_limit_handler(message: Message, command: CommandObject, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
-    
-    try:
-        game_id = int(command.command.split('_')[1])
-        game = db.get_game_by_id(game_id)
-        
-        if not game:
-            await message.answer("❌ Игра не найдена")
-            return
-        
-        await state.update_data(game_id=game_id)
-        await message.answer(
-            f"🎮 Игра #{game_id}\n"
-            f"📅 {game[1].strftime('%d.%m.%Y %H:%M')}\n"
-            f"👥 Текущий лимит: {game[3]} игроков\n\n"
-            "Введите новое максимальное количество игроков:"
-        )
-        await state.set_state(UserStates.admin_update_game_limit)
-        
-    except (ValueError, IndexError):
-        await message.answer("❌ Неверный формат команды")
-
-@dp.message(UserStates.admin_update_game_limit)
-async def process_game_limit_update(message: Message, state: FSMContext):
-    try:
-        new_limit = int(message.text.strip())
-        data = await state.get_data()
-        game_id = data.get('game_id')
-        
-        if new_limit <= 0:
-            await message.answer("❌ Лимит должен быть больше 0")
-            return
-        
-        if db.update_game_max_players(game_id, new_limit):
-            await message.answer(
-                f"✅ Лимит игроков обновлен!\n"
-                f"🎮 Игра #{game_id}\n"
-                f"👥 Новый лимит: {new_limit} игроков",
-                reply_markup=get_admin_games_keyboard()
-            )
-        else:
-            await message.answer("❌ Ошибка при обновлении лимита")
-        
-        await state.clear()
-        
-    except ValueError:
-        await message.answer("❌ Введите корректное число")
-
 # Удаление игрока с игры
 @dp.message(F.text == "🗑 Удалить запись")
 async def remove_player_from_game_handler(message: Message, state: FSMContext):
@@ -1136,59 +1280,6 @@ async def remove_player_from_game_handler(message: Message, state: FSMContext):
         "Нажмите на команду чтобы удалить игрока с игры"
     )
 
-# Удаление игрока с игры
-@dp.message(Command(startswith="remove_"))
-async def remove_player_game_handler(message: Message, command: CommandObject, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
-    
-    try:
-        game_id = int(command.command.split('_')[1])
-        game = db.get_game_by_id(game_id)
-        
-        if not game:
-            await message.answer("❌ Игра не найдена")
-            return
-        
-        registrations = db.get_game_registrations(game_id)
-        
-        if not registrations:
-            await message.answer("❌ На этой игре нет записавшихся игроков")
-            return
-        
-        players_list = "\n".join([f"• {name}" for name, status, rating, user_id in registrations])
-        
-        await state.update_data(game_id=game_id)
-        await message.answer(
-            f"🎮 Игра #{game_id}\n"
-            f"📅 {game[1].strftime('%d.%m.%Y %H:%M')}\n\n"
-            f"📋 Записанные игроки:\n{players_list}\n\n"
-            "Введите имя игрока для удаления с игры:"
-        )
-        await state.set_state(UserStates.admin_remove_player_from_game)
-        
-    except (ValueError, IndexError):
-        await message.answer("❌ Неверный формат команды")
-
-@dp.message(UserStates.admin_remove_player_from_game)
-async def process_remove_player_from_game(message: Message, state: FSMContext):
-    player_name = message.text.strip()
-    data = await state.get_data()
-    game_id = data.get('game_id')
-    
-    if db.remove_player_from_game(game_id, player_name):
-        await message.answer(
-            f"✅ Игрок '{player_name}' удален с игры #{game_id}",
-            reply_markup=get_admin_games_keyboard()
-        )
-    else:
-        await message.answer(
-            f"❌ Игрок '{player_name}' не найден на игре #{game_id}",
-            reply_markup=get_admin_games_keyboard()
-        )
-    
-    await state.clear()
-
 # Отмена игры
 @dp.message(F.text == "❌ Отменить игру")
 async def cancel_game_handler(message: Message):
@@ -1207,49 +1298,6 @@ async def cancel_game_handler(message: Message):
         f"❌ ОТМЕНА ИГРЫ:\n\n{games_list}\n\n"
         "Нажмите на команду чтобы отменить игру"
     )
-
-@dp.message(Command(startswith="cancel_"))
-async def cancel_specific_game_handler(message: Message, command: CommandObject):
-    if not is_admin(message.from_user.id):
-        return
-    
-    try:
-        game_id = int(command.command.split('_')[1])
-        game = db.get_game_by_id(game_id)
-        
-        if not game:
-            await message.answer("❌ Игра не найдена")
-            return
-        
-        if db.cancel_game(game_id):
-            # Рассылка уведомлений всем записавшимся
-            registrations = db.get_game_registrations(game_id)
-            user_ids = [user_id for name, status, rating, user_id in registrations if user_id]
-            
-            cancelled_count = 0
-            for user_id in user_ids:
-                try:
-                    await bot.send_message(
-                        user_id,
-                        f"❌ ИГРА ОТМЕНЕНА\n\n"
-                        f"🎮 Игра #{game_id}\n"
-                        f"📅 {game[1].strftime('%d.%m.%Y %H:%M')}\n\n"
-                        f"Игра была отменена администратором."
-                    )
-                    cancelled_count += 1
-                except Exception as e:
-                    logging.error(f"❌ Ошибка отправки уведомления пользователю {user_id}: {e}")
-            
-            await message.answer(
-                f"✅ Игра #{game_id} отменена!\n"
-                f"📨 Уведомления отправлены: {cancelled_count}/{len(user_ids)} игрокам",
-                reply_markup=get_admin_games_keyboard()
-            )
-        else:
-            await message.answer("❌ Ошибка при отмене игры")
-        
-    except (ValueError, IndexError):
-        await message.answer("❌ Неверный формат команды")
 
 # ========== СИСТЕМА РАССЫЛКИ ==========
 
@@ -1299,34 +1347,6 @@ async def broadcast_game_handler(message: Message, state: FSMContext):
         f"📢 РАССЫЛКА ПО ИГРЕ:\n\n{games_list}\n\n"
         "Нажмите на команду чтобы выбрать игру для рассылки"
     )
-
-@dp.message(Command(startswith="broadcast_"))
-async def broadcast_specific_game_handler(message: Message, command: CommandObject, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
-    
-    try:
-        game_id = int(command.command.split('_')[1])
-        game = db.get_game_by_id(game_id)
-        
-        if not game:
-            await message.answer("❌ Игра не найдена")
-            return
-        
-        user_ids = db.get_game_registrations_by_game(game_id)
-        
-        await state.update_data(broadcast_type=f"game_{game_id}", user_ids=user_ids)
-        
-        await message.answer(
-            f"📢 Рассылка по игре #{game_id}\n"
-            f"📅 {game[1].strftime('%d.%m.%Y %H:%M')}\n"
-            f"👥 Получателей: {len(user_ids)}\n\n"
-            "Введите сообщение для рассылки:"
-        )
-        await state.set_state(UserStates.admin_broadcast_message)
-        
-    except (ValueError, IndexError):
-        await message.answer("❌ Неверный формат команды")
 
 @dp.message(UserStates.admin_broadcast_message)
 async def process_broadcast_message(message: Message, state: FSMContext):
