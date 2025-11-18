@@ -609,7 +609,7 @@ class Database:
             return False
 
     def get_all_registrations_info(self):
-        """Получение информации о всех записях на все игры"""
+        """Получение информации о всех записях на все игры (для админ-панели)"""
         try:
             if not self.conn:
                 self.connect()

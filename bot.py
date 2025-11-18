@@ -149,7 +149,7 @@ def get_admin_games_keyboard():
     keyboard = ReplyKeyboardBuilder()
     keyboard.add(KeyboardButton(text="➕ Создать игру"))
     keyboard.add(KeyboardButton(text="📋 Управление играми"))
-    keyboard.add(KeyboardButton(text="👥 Списки записей"))
+    keyboard.add(KeyboardButton(text="👥 Списки записей"))  # Изменено название
     keyboard.add(KeyboardButton(text="🔙 Админ-панель"))
     keyboard.adjust(2)
     return keyboard.as_markup(resize_keyboard=True)
@@ -1043,36 +1043,19 @@ async def process_player_name(message: Message, state: FSMContext):
     
     await state.clear()
 
-# Показ списка игроков на игру
+# Показ списка игроков на игру (для пользователей)
 @dp.message(F.text == "📋 Списки игроков")
 async def show_game_lists_handler(message: Message):
-    games_info = db.get_all_registrations_info()
+    games = db.get_all_games()
     
-    if not games_info:
-        await message.answer("🎉 Нет активных игр с записями")
+    if not games:
+        await message.answer("🎉 Нет активных игр")
         return
     
-    lists_text = "📋 СПИСКИ ИГРОКОВ НА ВСЕ ИГРЫ:\n\n"
-    
-    for game_info in games_info:
-        game_id, game_name, game_date, location, registered_count, max_players, players_list = game_info
-        
-        lists_text += f"🎮 {game_name}\n"
-        lists_text += f"📅 {game_date.strftime('%d.%m.%Y %H:%M')}\n"
-        lists_text += f"📍 {location or 'Адрес не указан'}\n"
-        lists_text += f"👥 Игроков: {registered_count}/{max_players}\n"
-        
-        if players_list:
-            players = players_list.split(', ')
-            lists_text += "📋 СПИСОК ИГРОКОВ:\n"
-            for i, player in enumerate(players, 1):
-                lists_text += f"{i}. {player}\n"
-        else:
-            lists_text += "📭 Пока никто не записался\n"
-        
-        lists_text += "\n"
-    
-    await message.answer(lists_text)
+    await message.answer(
+        "📋 Выберите игру для просмотра списка игроков:",
+        reply_markup=get_games_selection_keyboard(games, "list")
+    )
 
 # Обработка показа списка игроков для конкретной игры
 @dp.callback_query(F.data.startswith("list_"))
@@ -1112,7 +1095,7 @@ async def manage_games_handler(message: Message):
     if not is_admin(message.from_user.id):
         return
     
-    games = db.get_all_games()  # Используем get_all_games вместо get_upcoming_games
+    games = db.get_all_games()
     
     if not games:
         await message.answer("🎉 Нет активных игр")
@@ -1133,6 +1116,40 @@ async def manage_games_handler(message: Message):
         games_text + "🛠️ Выберите игру для управления:",
         reply_markup=get_games_selection_keyboard(games, "manage")
     )
+
+# Списки всех записей на все игры (для админ-панели)
+@dp.message(F.text == "👥 Списки записей")
+async def admin_all_registrations_handler(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    
+    games_info = db.get_all_registrations_info()
+    
+    if not games_info:
+        await message.answer("🎉 Нет активных игр с записями")
+        return
+    
+    lists_text = "📋 ВСЕ ЗАПИСИ НА ИГРЫ:\n\n"
+    
+    for game_info in games_info:
+        game_id, game_name, game_date, location, registered_count, max_players, players_list = game_info
+        
+        lists_text += f"🎮 {game_name}\n"
+        lists_text += f"📅 {game_date.strftime('%d.%m.%Y %H:%M')}\n"
+        lists_text += f"📍 {location or 'Адрес не указан'}\n"
+        lists_text += f"👥 Игроков: {registered_count}/{max_players}\n"
+        
+        if players_list:
+            players = players_list.split(', ')
+            lists_text += "📋 СПИСОК ИГРОКОВ:\n"
+            for i, player in enumerate(players, 1):
+                lists_text += f"{i}. {player}\n"
+        else:
+            lists_text += "📭 Пока никто не записался\n"
+        
+        lists_text += "\n"
+    
+    await message.answer(lists_text)
 
 # Удаление всех игр
 @dp.message(F.text == "🗑️ Удалить все игры")
