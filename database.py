@@ -353,7 +353,7 @@ class Database:
             return False
 
     def cancel_game(self, game_id):
-        """Отмена игры"""
+        """Отмена игры (изменение статуса)"""
         try:
             cursor = self.conn.cursor()
             cursor.execute('''
@@ -364,6 +364,52 @@ class Database:
             return cursor.rowcount > 0
         except Exception as e:
             logging.error(f"❌ Ошибка отмены игры: {e}")
+            return False
+
+    def delete_game(self, game_id):
+        """Полное удаление игры из базы данных"""
+        try:
+            cursor = self.conn.cursor()
+            
+            # Сначала удаляем записи о регистрациях (из-за внешнего ключа)
+            cursor.execute('DELETE FROM game_registrations WHERE game_id = %s', (game_id,))
+            
+            # Затем удаляем саму игру
+            cursor.execute('DELETE FROM games WHERE id = %s', (game_id,))
+            
+            self.conn.commit()
+            cursor.close()
+            return True
+        except Exception as e:
+            logging.error(f"❌ Ошибка удаления игры {game_id}: {e}")
+            try:
+                if self.conn:
+                    self.conn.rollback()
+            except:
+                pass
+            return False
+
+    def delete_all_games(self):
+        """Удаление всех игр"""
+        try:
+            cursor = self.conn.cursor()
+            
+            # Удаляем все регистрации
+            cursor.execute('DELETE FROM game_registrations')
+            
+            # Удаляем все игры
+            cursor.execute('DELETE FROM games')
+            
+            self.conn.commit()
+            cursor.close()
+            return True
+        except Exception as e:
+            logging.error(f"❌ Ошибка удаления всех игр: {e}")
+            try:
+                if self.conn:
+                    self.conn.rollback()
+            except:
+                pass
             return False
 
     def get_all_game_registrations(self):

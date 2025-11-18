@@ -125,7 +125,8 @@ def get_admin_keyboard():
     keyboard.add(KeyboardButton(text="🗑 Удалить игрока"))
     keyboard.add(KeyboardButton(text="📤 Загрузить карточку"))
     keyboard.add(KeyboardButton(text="🎮 Управление играми"))
-    keyboard.add(KeyboardButton(text="📋 Списки всех игроков"))  # НОВАЯ КНОПКА
+    keyboard.add(KeyboardButton(text="🗑 Удалить все игры"))  # НОВАЯ КНОПКА
+    keyboard.add(KeyboardButton(text="📋 Списки всех игроков"))
     keyboard.add(KeyboardButton(text="📢 Рассылка"))
     keyboard.add(KeyboardButton(text="📊 Статистика БД"))
     keyboard.add(KeyboardButton(text="🔙 Главное меню"))
@@ -159,7 +160,8 @@ def get_game_management_keyboard(game_id):
     keyboard.add(InlineKeyboardButton(text="📋 Список игроков", callback_data=f"list_{game_id}"))
     keyboard.add(InlineKeyboardButton(text="✏️ Изменить лимит", callback_data=f"limit_{game_id}"))
     keyboard.add(InlineKeyboardButton(text="🗑 Удалить игрока", callback_data=f"remove_{game_id}"))
-    keyboard.add(InlineKeyboardButton(text="❌ Отменить игру", callback_data=f"cancel_{game_id}"))
+    keyboard.add(InlineKeyboardButton(text="❌ Удалить игру", callback_data=f"delete_game_{game_id}"))  # НОВАЯ КНОПКА
+    keyboard.add(InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_games_manage"))
     keyboard.adjust(1)
     return keyboard.as_markup()
 
@@ -1164,82 +1166,257 @@ async def cancel_specific_game_handler(callback: types.CallbackQuery):
     except (ValueError, IndexError):
         await callback.message.answer("❌ Ошибка при отмене игры")
 
-# ========== СИСТЕМА РАССЫЛКИ ==========
+# ========== НОВАЯ СИСТЕМА РАССЫЛКИ ЧЕРЕЗ КНОПКИ ==========
 
 @dp.message(F.text == "📢 Рассылка")
-async def broadcast_handler(message: Message, state: FSMContext):
+async def broadcast_handler(message: Message):
     if not is_admin(message.from_user.id):
         return
+    
+    # Создаем инлайн-клавиатуру для выбора типа рассылки
+    keyboard = InlineKeyboardBuilder()
+    keyboard.add(InlineKeyboardButton(text="📢 Всем игрокам", callback_data="broadcast_all"))
+    keyboard.add(InlineKeyboardButton(text="🎮 По конкретной игре", callback_data="broadcast_game_select"))
+    keyboard.adjust(1)
     
     await message.answer(
         "📢 СИСТЕМА РАССЫЛКИ\n\n"
-        "Выберите тип рассылки:\n"
-        "• /broadcast_all - Всем игрокам\n"
-        "• /broadcast_game - Игрокам конкретной игры\n\n"
-        "Или введите сообщение для рассылки:"
+        "Выберите тип рассылки:",
+        reply_markup=keyboard.as_markup()
     )
-    await state.set_state(UserStates.admin_broadcast_message)
 
-@dp.message(Command("broadcast_all"))
-async def broadcast_all_handler(message: Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
+# Обработка выбора "Всем игрокам"
+@dp.callback_query(F.data == "broadcast_all")
+async def broadcast_all_handler(callback: types.CallbackQuery, state: FSMContext):
+    user_ids = db.get_all_game_registrations()
+    
+    if not user_ids:
+        await callback.message.answer("❌ Нет игроков для рассылки")
+        await callback.answer()
         return
     
-    user_ids = db.get_all_game_registrations()
     await state.update_data(broadcast_type="all", user_ids=user_ids)
     
-    await message.answer(
+    await callback.message.answer(
         f"📢 Рассылка ВСЕМ игрокам\n"
         f"👥 Получателей: {len(user_ids)}\n\n"
         "Введите сообщение для рассылки:"
     )
     await state.set_state(UserStates.admin_broadcast_message)
+    await callback.answer()
 
-@dp.message(Command("broadcast_game"))
-async def broadcast_game_handler(message: Message, state: FSMContext):
+# Обработка выбора "По конкретной игре"
+@dp.callback_query(F.data == "broadcast_game_select")
+async def broadcast_game_select_handler(callback: types.CallbackQuery):
+    games = db.get_upcoming_games()
+    
+    if not games:
+        await callback.message.answer("🎉 Нет активных игр для рассылки")
+        await callback.answer()
+        return
+    
+    # Создаем клавиатуру с играми для рассылки
+    keyboard = InlineKeyboardBuilder()
+    for game in games:
+        game_id, game_name, game_date, game_type, max_players, buy_in, location, status = game
+        registrations = db.get_game_registrations(game_id)
+        current_players = len([r for r in registrations if r[1] == 'registered'])
+        
+        keyboard.add(InlineKeyboardButton(
+            text=f"🎮 {game_name} ({current_players} игр.)",
+            callback_data=f"broadcast_game_{game_id}"
+        ))
+    keyboard.add(InlineKeyboardButton(text="🔙 Назад", callback_data="broadcast_back"))
+    keyboard.adjust(1)
+    
+    await callback.message.answer(
+        "📢 Выберите игру для рассылки:",
+        reply_markup=keyboard.as_markup()
+    )
+    await callback.answer()
+
+# Обработка выбора конкретной игры для рассылки
+@dp.callback_query(F.data.startswith("broadcast_game_"))
+async def broadcast_specific_game_handler(callback: types.CallbackQuery, state: FSMContext):
+    try:
+        game_id = int(callback.data.split('_')[2])
+        game = db.get_game_by_id(game_id)
+        
+        if not game:
+            await callback.message.answer("❌ Игра не найдена")
+            await callback.answer()
+            return
+        
+        user_ids = db.get_game_registrations_by_game(game_id)
+        
+        if not user_ids:
+            await callback.message.answer("❌ На этой игре нет записавшихся игроков")
+            await callback.answer()
+            return
+        
+        await state.update_data(broadcast_type=f"game_{game_id}", user_ids=user_ids)
+        
+        await callback.message.answer(
+            f"📢 Рассылка по игре:\n"
+            f"🎮 {game[1]}\n"
+            f"📅 {game[2].strftime('%d.%m.%Y %H:%M')}\n"
+            f"👥 Получателей: {len(user_ids)}\n\n"
+            "Введите сообщение для рассылки:"
+        )
+        await state.set_state(UserStates.admin_broadcast_message)
+        await callback.answer()
+        
+    except (ValueError, IndexError):
+        await callback.message.answer("❌ Ошибка при выборе игры")
+        await callback.answer()
+
+# Кнопка "Назад" в рассылке
+@dp.callback_query(F.data == "broadcast_back")
+async def broadcast_back_handler(callback: types.CallbackQuery):
+    await broadcast_handler(callback.message)
+    await callback.answer()
+
+# ========== УДАЛЕНИЕ ВСЕХ ИГР ==========
+
+@dp.message(F.text == "🗑 Удалить все игры")
+async def delete_all_games_handler(message: Message):
     if not is_admin(message.from_user.id):
         return
     
     games = db.get_upcoming_games()
     
     if not games:
-        await message.answer("🎉 Нет активных игр")
+        await message.answer("🎉 Нет активных игр для удаления")
         return
     
-    games_list = "\n".join([f"🎮 Игра #{game[0]} - {game[1]} - /broadcast_{game[0]}" for game in games])
+    # Создаем клавиатуру с подтверждением
+    keyboard = InlineKeyboardBuilder()
+    keyboard.add(InlineKeyboardButton(text="✅ Да, удалить все", callback_data="confirm_delete_all_games"))
+    keyboard.add(InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_delete_all_games"))
+    keyboard.adjust(2)
     
     await message.answer(
-        f"📢 РАССЫЛКА ПО ИГРЕ:\n\n{games_list}\n\n"
-        "Нажмите на команду чтобы выбрать игру для рассылки"
+        f"⚠️ ВЫ УВЕРЕНЫ, ЧТО ХОТИТЕ УДАЛИТЬ ВСЕ ИГРЫ?\n\n"
+        f"📊 Будет удалено: {len(games)} игр\n"
+        f"🎮 Список игр:\n" + "\n".join([f"• {game[1]}" for game in games]) + "\n\n"
+        f"❌ Это действие нельзя отменить!",
+        reply_markup=keyboard.as_markup()
     )
 
-@dp.message(Command("broadcast_"))
-async def broadcast_specific_game_handler(message: Message, command: CommandObject, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
-    
+# Подтверждение удаления всех игр
+@dp.callback_query(F.data == "confirm_delete_all_games")
+async def confirm_delete_all_games_handler(callback: types.CallbackQuery):
     try:
-        game_id = int(command.args)
+        if db.delete_all_games():
+            await callback.message.answer(
+                f"✅ Все игры успешно удалены!",
+                reply_markup=get_admin_keyboard()
+            )
+        else:
+            await callback.message.answer(
+                "❌ Ошибка при удалении всех игр",
+                reply_markup=get_admin_keyboard()
+            )
+        await callback.answer()
+        
+    except Exception as e:
+        logging.error(f"❌ Ошибка удаления всех игр: {e}")
+        await callback.message.answer(
+            "❌ Ошибка при удалении игр",
+            reply_markup=get_admin_keyboard()
+        )
+        await callback.answer()
+
+# Отмена удаления всех игр
+@dp.callback_query(F.data == "cancel_delete_all_games")
+async def cancel_delete_all_games_handler(callback: types.CallbackQuery):
+    await callback.message.answer(
+        "❌ Удаление всех игр отменено",
+        reply_markup=get_admin_keyboard()
+    )
+    await callback.answer()
+
+# ========== УДАЛЕНИЕ КОНКРЕТНОЙ ИГРЫ ==========
+
+# Обработка удаления конкретной игры
+@dp.callback_query(F.data.startswith("delete_game_"))
+async def delete_specific_game_handler(callback: types.CallbackQuery):
+    try:
+        game_id = int(callback.data.split('_')[2])
         game = db.get_game_by_id(game_id)
         
         if not game:
-            await message.answer("❌ Игра не найдена")
+            await callback.message.answer("❌ Игра не найдена")
+            await callback.answer()
             return
         
-        user_ids = db.get_game_registrations_by_game(game_id)
+        # Создаем клавиатуру с подтверждением
+        keyboard = InlineKeyboardBuilder()
+        keyboard.add(InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"confirm_delete_game_{game_id}"))
+        keyboard.add(InlineKeyboardButton(text="❌ Отмена", callback_data=f"cancel_delete_game_{game_id}"))
+        keyboard.adjust(2)
         
-        await state.update_data(broadcast_type=f"game_{game_id}", user_ids=user_ids)
-        
-        await message.answer(
-            f"📢 Рассылка по игре #{game_id}\n"
+        await callback.message.answer(
+            f"⚠️ ВЫ УВЕРЕНЫ, ЧТО ХОТИТЕ УДАЛИТЬ ИГРУ?\n\n"
+            f"🎮 {game[1]}\n"
             f"📅 {game[2].strftime('%d.%m.%Y %H:%M')}\n"
-            f"👥 Получателей: {len(user_ids)}\n\n"
-            "Введите сообщение для рассылки:"
+            f"📍 {game[6] or 'Адрес не указан'}\n\n"
+            f"❌ Это действие нельзя отменить!",
+            reply_markup=keyboard.as_markup()
         )
-        await state.set_state(UserStates.admin_broadcast_message)
+        await callback.answer()
         
     except (ValueError, IndexError):
-        await message.answer("❌ Неверный формат команды. Используйте: /broadcast_1")
+        await callback.message.answer("❌ Ошибка при удалении игры")
+        await callback.answer()
+
+# Подтверждение удаления конкретной игры
+@dp.callback_query(F.data.startswith("confirm_delete_game_"))
+async def confirm_delete_specific_game_handler(callback: types.CallbackQuery):
+    try:
+        game_id = int(callback.data.split('_')[3])
+        game = db.get_game_by_id(game_id)
+        
+        if not game:
+            await callback.message.answer("❌ Игра не найдена")
+            await callback.answer()
+            return
+        
+        # Удаляем игру
+        if db.delete_game(game_id):
+            await callback.message.answer(
+                f"✅ Игра удалена!\n\n"
+                f"🎮 {game[1]}\n"
+                f"📅 {game[2].strftime('%d.%m.%Y %H:%M')}",
+                reply_markup=get_admin_games_keyboard()
+            )
+        else:
+            await callback.message.answer(
+                "❌ Ошибка при удалении игры",
+                reply_markup=get_admin_games_keyboard()
+            )
+        await callback.answer()
+        
+    except (ValueError, IndexError):
+        await callback.message.answer("❌ Ошибка при удалении игры")
+        await callback.answer()
+
+# Отмена удаления конкретной игры
+@dp.callback_query(F.data.startswith("cancel_delete_game_"))
+async def cancel_delete_specific_game_handler(callback: types.CallbackQuery):
+    await callback.message.answer(
+        "❌ Удаление игры отменено",
+        reply_markup=get_admin_games_keyboard()
+    )
+    await callback.answer()
+
+# Кнопка "Назад" в управлении играми
+@dp.callback_query(F.data == "back_to_games_manage")
+async def back_to_games_manage_handler(callback: types.CallbackQuery):
+    await manage_games_handler(callback.message)
+    await callback.answer()
+
+# ========== ОБРАБОТКА РАССЫЛКИ ==========
 
 @dp.message(UserStates.admin_broadcast_message)
 async def process_broadcast_message(message: Message, state: FSMContext):
@@ -1347,7 +1524,7 @@ async def rules_handler(message: Message):
 • Только карты со стола  
 • Любую комбинацию своих карт и карт со стола
 
-🎮 <b>Советую пройти мини-тест по покеру</b> чтобы закрепить знания о комбинациях!
+🎮 <b>Советую пройти мини-тест по покеру</b> чтобы закрепить знаний о комбинациях!
 """
     
     try:
