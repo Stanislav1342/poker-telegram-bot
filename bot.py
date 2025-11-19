@@ -648,11 +648,350 @@ async def full_rating_handler(message: Message):
     
     await message.answer(rating_text, reply_markup=get_main_keyboard(message.from_user.id))
 
-# ... остальные обработчики без изменений ...
+# ========== ОБРАБОТЧИК ПРАВИЛ ПОКЕРА ==========
+
+@dp.message(F.text == "📚 Правила покера")
+async def rules_handler(message: Message):
+    rules_text = """🎯 <b>Краткие правила покера (Техасский Холдем)</b> 🎯
+
+<b>Цель игры:</b> собрать наилучшую покерную комбинацию из 5 карт, используя свои 2 карты и 5 общих карт на столе.
+
+<b>Как играть:</b>
+1. Игроки получают по 2 карты (в закрытую)
+2. На стол выкладываются 5 общих карт в 3 этапа:
+   • Флоп (3 карты)
+   • Терн (1 карта) 
+   • Ривер (1 карта)
+3. После каждого этапа - торги
+4. В финале - вскрытие карт и определение победителя
+
+<b>Важно:</b> Вы можете использовать:
+• Только свои 2 карты
+• Только карты со стола  
+• Любую комбинацию своих карт и карт со стола
+
+🎮 <b>Советую пройти мини-тест по покеру</b> чтобы закрепить знания о комбинациях!
+"""
+    
+    try:
+        photo_url = "https://i.pinimg.com/originals/d6/42/a4/d642a4866de6863efcb5b1c60017d562.png"
+        
+        await message.answer_photo(
+            photo_url,
+            caption=rules_text,
+            parse_mode="HTML",
+            reply_markup=get_main_keyboard(message.from_user.id)
+        )
+    except Exception as e:
+        await message.answer(
+            rules_text, 
+            parse_mode="HTML",
+            reply_markup=get_main_keyboard(message.from_user.id)
+        )
+
+# ========== ОБРАБОТЧИК ТЕСТА ПО ПОКЕРУ ==========
+
+@dp.message(F.text == "🧠 Тест по покеру")
+async def poker_test_handler(message: Message, state: FSMContext):
+    user_test_data[message.from_user.id] = {
+        "current_question": 0,
+        "score": 0,
+        "answers": []
+    }
+    await send_question(message, state)
+
+async def send_question(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    current_question = user_test_data[user_id]["current_question"]
+    
+    if current_question >= len(poker_test_questions):
+        await finish_test(message, state)
+        return
+    
+    question = poker_test_questions[current_question]
+    question_text = f"❓ Вопрос {current_question + 1}/{len(poker_test_questions)}:\n\n{question['question']}"
+    
+    await message.answer(question_text, reply_markup=get_test_keyboard(current_question))
+    await state.set_state(UserStates.poker_test)
+
+@dp.message(UserStates.poker_test)
+async def process_test_answer(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    
+    if message.text == "❌ Отменить тест":
+        await message.answer("Тест отменен", reply_markup=get_main_keyboard(user_id))
+        await state.clear()
+        return
+    
+    try:
+        answer_text = message.text.strip()
+        answer_num = int(answer_text.split('.')[0]) - 1
+        
+        current_question = user_test_data[user_id]["current_question"]
+        question = poker_test_questions[current_question]
+        
+        if answer_num < 0 or answer_num >= len(question["options"]):
+            await message.answer(f"❌ Пожалуйста, выберите вариант от 1 до {len(question['options'])}")
+            return
+        
+        is_correct = (answer_num == question["correct"])
+        
+        if is_correct:
+            user_test_data[user_id]["score"] += 1
+        
+        user_test_data[user_id]["answers"].append(is_correct)
+        
+        if is_correct:
+            await message.answer(f"✅ {question['explanation']}")
+        else:
+            correct_option = question["options"][question["correct"]]
+            await message.answer(f"❌ Неправильно. {question['explanation']}\n\nПравильный ответ: {correct_option}")
+        
+        user_test_data[user_id]["current_question"] += 1
+        await asyncio.sleep(2)
+        await send_question(message, state)
+        
+    except (ValueError, IndexError):
+        await message.answer(f"❌ Пожалуйста, выберите вариант ответа (1, 2, 3 или 4) нажав на кнопку")
+
+async def finish_test(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    score = user_test_data[user_id]["score"]
+    total = len(poker_test_questions)
+    
+    result_text = (
+        f"🎉 Тест завершен!\n\n"
+        f"📊 Ваш результат: {score}/{total}\n"
+        f"📈 Процент правильных ответов: {score/total*100:.1f}%\n\n"
+    )
+    
+    if score == total:
+        result_text += "🏆 Отлично! Вы отлично знаете правила покера!"
+    elif score >= total * 0.7:
+        result_text += "👍 Хорошо! Вы хорошо разбираетесь в покере!"
+    else:
+        result_text += "📚 Есть куда расти! Повторите правила покера."
+    
+    await message.answer(result_text, reply_markup=get_main_keyboard(user_id))
+    await state.clear()
+
+# ========== ОБРАБОТЧИК ПРЕДСТОЯЩИХ ИГР ==========
+
+@dp.message(F.text == "📅 Предстоящие игры")
+async def upcoming_games_handler(message: Message):
+    games = db.get_upcoming_games()
+    
+    if not games:
+        await message.answer("🎉 На этой неделе пока нет запланированных игр")
+        return
+    
+    games_text = "🎯 ПРЕДСТОЯЩИЕ ИГРЫ:\n\n"
+    for game in games:
+        game_id, game_name, game_date, game_type, max_players, buy_in, location, status, host, end_time = game
+        registrations = db.get_game_registrations(game_id)
+        current_players = len([r for r in registrations if r[1] == 'registered'])
+        
+        games_text += f"🌃 {get_russian_weekday(game_date)} {game_date.strftime('%d.%m')}\n"
+        games_text += f"{game_name} 🃏\n"
+        games_text += f"{location}\n"
+        games_text += f"🕢 {game_date.strftime('%H:%M')}-{end_time or '22:00'}\n"
+        games_text += f"💸 {int(buy_in)} рублей\n"
+        games_text += f"Ведущий: {host or 'Капоне'}\n"
+        games_text += f"👥 Игроков: {current_players}/{max_players}\n\n"
+    
+    await message.answer(games_text)
+
+# ========== ОБРАБОТЧИК ОТМЕНЫ ЗАПИСИ ==========
+
+@dp.message(F.text == "❌ Отменить запись")
+async def cancel_registration_handler(message: Message):
+    user_id = message.from_user.id
+    registrations = db.get_user_registrations(user_id)
+    
+    if not registrations:
+        await message.answer("📭 У вас нет активных записей на игры")
+        return
+    
+    await message.answer(
+        "❌ Выберите игру для отмены записи:",
+        reply_markup=get_cancel_registration_keyboard(registrations)
+    )
+
+@dp.callback_query(F.data.startswith("cancelreg_"))
+async def process_cancel_registration(callback: types.CallbackQuery):
+    try:
+        game_id = int(callback.data.split('_')[1])
+        user_id = callback.from_user.id
+        
+        # Получаем запись пользователя
+        registrations = db.get_user_registrations(user_id)
+        player_name = None
+        
+        for reg in registrations:
+            if reg[0] == game_id:
+                player_name = reg[4]
+                break
+        
+        if not player_name:
+            await callback.message.answer("❌ Запись не найдена")
+            return
+        
+        # Удаляем запись
+        if db.remove_player_from_game(game_id, player_name):
+            game = db.get_game_by_id(game_id)
+            await callback.message.answer(
+                f"✅ Запись на игру отменена!\n\n"
+                f"🎮 {game[1]}\n"
+                f"📅 {game[2].strftime('%d.%m.%Y %H:%M')}\n"
+                f"👤 Игрок: {player_name}",
+                reply_markup=get_games_keyboard()
+            )
+        else:
+            await callback.message.answer("❌ Ошибка при отмене записи")
+        
+        await callback.answer()
+        
+    except (ValueError, IndexError):
+        await callback.message.answer("❌ Ошибка при отмене записи")
+
+# ========== ОБРАБОТЧИК МОИХ ЗАПИСЕЙ ==========
+
+@dp.message(F.text == "👥 Мои записи")
+async def my_registrations_handler(message: Message):
+    """Показать игры, на которые записан пользователь"""
+    try:
+        user_id = message.from_user.id
+        registrations = db.get_user_registrations(user_id)
+        
+        if not registrations:
+            await message.answer(
+                "📭 Вы еще не записаны ни на одну игру\n\n"
+                "🎮 Используйте кнопку 'Записаться на игру' чтобы присоединиться к игре!",
+                reply_markup=get_games_keyboard()
+            )
+            return
+        
+        registrations_text = "👥 ВАШИ ЗАПИСИ НА ИГРЫ:\n\n"
+        
+        for reg in registrations:
+            game_id, game_name, game_date, location, player_name = reg
+            game = db.get_game_by_id(game_id)
+            buy_in = game[5] if game else 1200
+            host = game[8] if game else 'Капоне'
+            end_time = game[9] if game else '22:00'
+            
+            registrations_text += f"🌃 {get_russian_weekday(game_date)} {game_date.strftime('%d.%m')}\n"
+            registrations_text += f"{game_name} 🃏\n"
+            registrations_text += f"{location}\n"
+            registrations_text += f"🕢 {game_date.strftime('%H:%M')}-{end_time}\n"
+            registrations_text += f"💸 {int(buy_in)} рублей\n"
+            registrations_text += f"🎤 Ведущий: {host}\n"
+            registrations_text += f"👤 Ваш ник: {player_name}\n\n"
+        
+        await message.answer(registrations_text, reply_markup=get_games_keyboard())
+        
+    except Exception as e:
+        logging.error(f"❌ Ошибка получения записей пользователя: {e}")
+        await message.answer(
+            "❌ Ошибка при получении ваших записей",
+            reply_markup=get_games_keyboard()
+        )
+
+# ========== ОБРАБОТЧИК СПИСКОВ ИГРОКОВ ==========
+
+@dp.message(F.text == "📋 Списки игроков")
+async def show_game_lists_handler(message: Message):
+    games = db.get_upcoming_games()
+    
+    if not games:
+        await message.answer("🎉 Нет активных игр")
+        return
+    
+    # Создаем инлайн-клавиатуру с играми
+    keyboard = InlineKeyboardBuilder()
+    for game in games:
+        game_id, game_name, game_date, game_type, max_players, buy_in, location, status, host, end_time = game
+        registrations = db.get_game_registrations(game_id)
+        current_players = len([r for r in registrations if r[1] == 'registered'])
+        
+        keyboard.add(InlineKeyboardButton(
+            text=f"{game_name} ({current_players}/{max_players})",
+            callback_data=f"list_{game_id}"
+        ))
+    keyboard.adjust(1)
+    
+    await message.answer(
+        "📋 Выберите игру для просмотра списка игроков:",
+        reply_markup=keyboard.as_markup()
+    )
+
+@dp.callback_query(F.data.startswith("list_"))
+async def show_game_list_handler(callback: types.CallbackQuery):
+    try:
+        game_id = int(callback.data.split('_')[1])
+        game = db.get_game_by_id(game_id)
+        
+        if not game:
+            await callback.message.answer("❌ Игра не найдена")
+            return
+        
+        registrations = db.get_game_registrations(game_id)
+        
+        game_info = f"🌃 {get_russian_weekday(game[2])} {game[2].strftime('%d.%m')}\n"
+        game_info += f"{game[1]} 🃏\n"
+        game_info += f"{game[6]}\n"
+        game_info += f"🕢 {game[2].strftime('%H:%M')}-{game[9] or '22:00'}\n"
+        game_info += f"💸 {int(game[5])} рублей\n"
+        game_info += f"🎤 Ведущий: {game[8] or 'Капоне'}\n"
+        game_info += f"👥 Игроков: {len(registrations)}/{game[4]}\n\n"
+        
+        if registrations:
+            game_info += "📋 СПИСОК ИГРОКОВ:\n"
+            for i, (name, status, rating, user_id) in enumerate(registrations, 1):
+                game_info += f"{i}. {name}\n"
+        else:
+            game_info += "📭 Пока никто не записался"
+        
+        await callback.message.answer(game_info)
+        await callback.answer()
+        
+    except (ValueError, IndexError):
+        await callback.message.answer("❌ Ошибка при получении списка игроков")
+
+# ========== ОБРАБОТЧИКИ ГЛАВНОГО МЕНЮ ==========
+
+@dp.message(F.text == "🔙 Главное меню")
+async def main_menu_handler(message: Message):
+    await message.answer("Возвращаемся в главное меню:", reply_markup=get_main_keyboard(message.from_user.id))
+
+@dp.message(F.text == "🔙 Назад к играм")
+async def back_to_games_handler(message: Message):
+    await message.answer("Возвращаемся к играм:", reply_markup=get_games_keyboard())
+
+@dp.message(F.text == "🔙 Админ-панель")
+async def back_to_admin_handler(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    await message.answer("Возвращаемся в админ-панель:", reply_markup=get_admin_keyboard())
+
+# ========== ОЧИСТКА ПРОЦЕССОВ ==========
+
+async def cleanup_processed_starts():
+    """Очистка старых записей в processed_starts"""
+    while True:
+        await asyncio.sleep(60)
+        current_time = asyncio.get_event_loop().time()
+        global processed_starts
+        processed_starts = {uid: time for uid, time in processed_starts.items() 
+                          if current_time - time < 300}
+
+# ========== ЗАПУСК БОТА ==========
 
 async def main():
     logging.basicConfig(level=logging.INFO)
     logging.info("🤖 Бот запущен с улучшенной системой поиска игроков!")
+    
+    asyncio.create_task(cleanup_processed_starts())
     
     await dp.start_polling(bot)
 
