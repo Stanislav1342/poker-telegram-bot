@@ -611,7 +611,7 @@ async def process_game_registration_name(message: Message, state: FSMContext):
             success_text = (
                 f"✅ {result_message}\n\n"
                 f"🎮 {game[1]}\n"
-                f"📅 {game[2].strftime('%d.%m %H:%M')-({game[9]})}\n"
+                f"📅 {game[2].strftime('%d.%m %H:%M')}\n"
                 f"👤 Ваш ник: {player_name}\n"
                 f"👥 Теперь игроков: {current_players}/{game[4]}"
             )
