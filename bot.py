@@ -230,6 +230,14 @@ def get_cancel_registration_keyboard(registrations):
     keyboard.adjust(1)
     return keyboard.as_markup()
 
+# Добавь эту функцию в раздел с другими клавиатурами
+def get_cancel_action_keyboard():
+    """Клавиатура для отмены действия (процесса записи)"""
+    keyboard = ReplyKeyboardBuilder()
+    keyboard.add(KeyboardButton(text="🚫 Отменить действие"))
+    keyboard.adjust(1)
+    return keyboard.as_markup(resize_keyboard=True)
+
 @dp.callback_query(F.data.startswith("cancelreg_"))
 async def process_cancel_registration(callback: types.CallbackQuery):
     try:
@@ -580,31 +588,41 @@ async def process_game_selection(callback: types.CallbackQuery, state: FSMContex
             f"💸 {int(game[5])} рублей\n"
             f"🎤 Ведущий: {game[8] or 'Капоне'}\n"
             f"👥 Свободно мест: {max_players - current_players}/{max_players}\n\n"
-            f"👤 Введите ваш игровой никнейм для записи:"
+            f"👤 Введите ваш игровой никнейм для записи:\n\n"
+            f"⚠️ Или нажмите '🚫 Отменить действие' чтобы вернуться назад",
+            reply_markup=get_cancel_action_keyboard()  # ★★★ НОВАЯ КНОПКА ★★★
         )
         await state.set_state(UserStates.user_register_for_game)
         await callback.answer()
         
     except (ValueError, IndexError):
         await callback.message.answer("❌ Ошибка выбора игры")
-
 # Обнови обработчик состояния записи на игру
 # Добавь эту функцию в раздел с другими функциями (после normalize_name)
 def normalize_name_for_comparison(name):
     """Нормализация имени для сравнения: заменяет ё на е, нижний регистр, убирает пробелы"""
     return name.lower().replace('ё', 'е').strip()
 
-# Обнови обработчик записи на игру
 @dp.message(UserStates.user_register_for_game)
 async def process_game_registration_name(message: Message, state: FSMContext):
     try:
         player_name = message.text.strip()
         
+        # ★★★ ОБРАБОТКА ОТМЕНЫ ДЕЙСТВИЯ ★★★
+        if player_name == "🚫 Отменить действие":
+            await message.answer(
+                "✅ Действие отменено",
+                reply_markup=get_games_keyboard()
+            )
+            await state.clear()
+            return
+        
         # ★★★ ПРОВЕРКА: Запрещаем использовать команды бота в качестве ника ★★★
         if player_name in BOT_COMMANDS:
             await message.answer(
                 "❌ Нельзя использовать команды бота в качестве ника!\n\n"
-                "👤 Пожалуйста, введите ваш игровой никнейм:"
+                "👤 Пожалуйста, введите ваш обычный игровой никнейм:",
+                reply_markup=get_cancel_action_keyboard()  # ★★★ СОХРАНЯЕМ КНОПКУ ОТМЕНЫ ★★★
             )
             return
         
@@ -612,14 +630,16 @@ async def process_game_registration_name(message: Message, state: FSMContext):
         if len(player_name) < 2:
             await message.answer(
                 "❌ Слишком короткий ник! Минимум 2 символа.\n\n"
-                "👤 Пожалуйста, введите ваш игровой никнейм:"
+                "👤 Пожалуйста, введите ваш игровой никнейм:",
+                reply_markup=get_cancel_action_keyboard()  # ★★★ СОХРАНЯЕМ КНОПКУ ОТМЕНЫ ★★★
             )
             return
 
         if len(player_name) > 30:
             await message.answer(
                 "❌ Слишком длинный ник! Максимум 30 символов.\n\n"
-                "👤 Пожалуйста, введите ваш игровой никнейм:"
+                "👤 Пожалуйста, введите ваш игровой никнейм:",
+                reply_markup=get_cancel_action_keyboard()  # ★★★ СОХРАНЯЕМ КНОПКУ ОТМЕНЫ ★★★
             )
             return
         
@@ -651,7 +671,8 @@ async def process_game_registration_name(message: Message, state: FSMContext):
         if duplicate_found:
             await message.answer(
                 f"❌ Игрок с ником '{existing_duplicate_name}' уже записан на эту игру.\n\n"
-                f"Пожалуйста, выберите другой никнейм для записи:"
+                f"Пожалуйста, выберите другой никнейм для записи:",
+                reply_markup=get_cancel_action_keyboard()  # ★★★ СОХРАНЯЕМ КНОПКУ ОТМЕНЫ ★★★
             )
             return
         
@@ -680,18 +701,6 @@ async def process_game_registration_name(message: Message, state: FSMContext):
         
     except Exception as e:
         logging.error(f"❌ Ошибка при записи на игру: {e}")
-        await message.answer("❌ Произошла ошибка при записи на игру", reply_markup=get_games_keyboard())
-        await state.clear()
-        
-    except Exception as e:
-        await message.answer("❌ Произошла ошибка при записи на игру", reply_markup=get_games_keyboard())
-        await state.clear()
-        
-    except Exception as e:
-        await message.answer("❌ Произошла ошибка при записи на игру", reply_markup=get_games_keyboard())
-        await state.clear()
-        
-    except Exception as e:
         await message.answer("❌ Произошла ошибка при записи на игру", reply_markup=get_games_keyboard())
         await state.clear()
 
