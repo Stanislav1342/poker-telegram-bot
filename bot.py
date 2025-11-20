@@ -191,7 +191,7 @@ def get_games_selection_keyboard(games, action="select"):
     for game in games:
         game_id, game_name, game_date, game_type, max_players, buy_in, location, status, host, end_time = game
         keyboard.add(InlineKeyboardButton(
-            text=f"{game_name} ({game_date.strftime('%d.%m/ %H:%M')}-{game[9]})",
+            text=f"{game_name} ({game_date.strftime('%d.%m_%H:%M')}-{game[9]})",
             callback_data=f"{action}_{game_id}"
         ))
     keyboard.adjust(1)
@@ -211,7 +211,7 @@ def get_cancel_registration_keyboard(registrations):
             end_time = '22:00'  # значение по умолчанию
         
         keyboard.add(InlineKeyboardButton(
-            text=f"{game_name} ({game_date.strftime('%d.%m %H:%M')}-{game[9]} - {player_name})",
+            text=f"{game_name} ({game_date.strftime('%d.%m_%H:%M')}-{game[9]} - {player_name})",
             callback_data=f"cancelreg_{game_id}_{player_name.replace(' ', '_')}"
         ))
     keyboard.adjust(1)
@@ -702,7 +702,7 @@ async def my_registrations_handler(message: Message):
             end_time = game[9] if game else '22:00'
             
             registrations_text += f"🌃 {get_russian_weekday(game_date)} {game_date.strftime('%d.%m')}\n"
-            registrations_text += f"{game_name} 🃏\n"
+            registrations_text += f"{game_name} \n"
             registrations_text += f"{location}\n"
             registrations_text += f"🕢 {game_date.strftime('%H:%M')}-{end_time}\n"
             registrations_text += f"💸 {int(buy_in)} рублей\n"
@@ -729,7 +729,7 @@ async def show_game_lists_handler(message: Message):
         current_players = len([r for r in registrations if r[1] == 'registered'])
         
         keyboard.add(InlineKeyboardButton(
-            text=f"{game_name} ({game_date.strftime('%d.%m/ %H:%M')}-{game[9]}) - {current_players}/{max_players} игроков",
+            text=f"{game_name} ({game_date.strftime('%d.%m_%H:%M')}-{game[9]}) - {current_players}/{max_players} игроков",
             callback_data=f"list_{game_id}"
         ))
     keyboard.adjust(1)
