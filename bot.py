@@ -197,13 +197,13 @@ def get_games_selection_keyboard(games, action="select"):
     keyboard.adjust(1)
     return keyboard.as_markup()
 
-# Клавиатура для отмены записи
+# Обновленная функция для клавиатуры отмены записи
 def get_cancel_registration_keyboard(registrations):
     keyboard = InlineKeyboardBuilder()
     for reg in registrations:
         game_id, game_name, game_date, location, player_name = reg
         keyboard.add(InlineKeyboardButton(
-            text=f"{game_name} ({game_date.strftime('%d.%m %H:%M')})",
+            text=f"{game_name} ({game_date.strftime('%d.%m %H:%M')}) - {player_name}",
             callback_data=f"cancelreg_{game_id}"
         ))
     keyboard.adjust(1)
@@ -264,8 +264,9 @@ async def process_player_name(message: Message, state: FSMContext):
         found_player = None
         player_rating = None
         
+        # Ищем игрока по частичному совпадению
         for name, rating in players_rating.items():
-            if normalize_name(name) == search_name:
+            if search_name in normalize_name(name):
                 found_player = name
                 player_rating = rating
                 break
@@ -305,6 +306,10 @@ async def process_player_name(message: Message, state: FSMContext):
                 reply_markup=get_main_keyboard(message.from_user.id)
             )
         
+        await state.clear()
+        
+    except Exception as e:
+        await message.answer("❌ Произошла ошибка при поиске игрока")
         await state.clear()
         
     except Exception as e:
@@ -546,6 +551,17 @@ async def process_game_registration_name(message: Message, state: FSMContext):
             await state.clear()
             return
         
+        # ★★★ ПРОВЕРКА: Уже есть ли такой ник на этой игре ★★★
+        registrations = db.get_game_registrations(game_id)
+        existing_players = [name for name, status, rating, user_id in registrations]
+        
+        if player_name in existing_players:
+            await message.answer(
+                f"❌ Игрок с ником '{player_name}' уже записан на эту игру.\n\n"
+                f"Пожалуйста, выберите другой никнейм для записи:"
+            )
+            return
+        
         # Записываем игрока на игру (любого, без проверки в базе)
         success, result_message = db.register_player_for_game(
             game_id, player_name, message.from_user.id
@@ -567,6 +583,10 @@ async def process_game_registration_name(message: Message, state: FSMContext):
         else:
             await message.answer(result_message, reply_markup=get_games_keyboard())
         
+        await state.clear()
+        
+    except Exception as e:
+        await message.answer("❌ Произошла ошибка при записи на игру", reply_markup=get_games_keyboard())
         await state.clear()
         
     except Exception as e:
@@ -695,9 +715,10 @@ async def show_game_list_handler(callback: types.CallbackQuery):
         
         registrations = db.get_game_registrations(game_id)
         
-        game_info = f"🌃 {get_russian_weekday(game[2])} {game[2].strftime('%d.%m')}\n"
-        game_info += f"{game[1]} 🃏\n"
-        game_info += f"{game[6]}\n"
+        game_info = f"🎮 {game[1]}\n"
+        game_info += f"📅 {game[2].strftime('%d.%m.%Y %H:%M')}\n"
+        game_info += f"🌃 {get_russian_weekday(game[2])}\n"
+        game_info += f"📍 {game[6]}\n"
         game_info += f"🕢 {game[2].strftime('%H:%M')}-{game[9] or '22:00'}\n"
         game_info += f"💸 {int(game[5])} рублей\n"
         game_info += f"🎤 Ведущий: {game[8] or 'Капоне'}\n"
@@ -1524,9 +1545,10 @@ async def admin_all_players_handler(message: Message):
         game_id, game_name, game_date, game_type, max_players, buy_in, location, status, host, end_time = game
         registrations = db.get_game_registrations(game_id)
         
-        all_players_text += f"🌃 {get_russian_weekday(game_date)} {game_date.strftime('%d.%m')}\n"
-        all_players_text += f"{game_name} 🃏\n"
-        all_players_text += f"{location}\n"
+        all_players_text += f"🎮 {game_name}\n"
+        all_players_text += f"📅 {game_date.strftime('%d.%m.%Y %H:%M')}\n"
+        all_players_text += f"🌃 {get_russian_weekday(game_date)}\n"
+        all_players_text += f"📍 {location}\n"
         all_players_text += f"🕢 {game_date.strftime('%H:%M')}-{end_time or '22:00'}\n"
         all_players_text += f"💸 {int(buy_in)} рублей\n"
         all_players_text += f"🎤 Ведущий: {host or 'Капоне'}\n"
