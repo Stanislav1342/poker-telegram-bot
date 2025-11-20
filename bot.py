@@ -191,21 +191,28 @@ def get_games_selection_keyboard(games, action="select"):
     for game in games:
         game_id, game_name, game_date, game_type, max_players, buy_in, location, status, host, end_time = game
         keyboard.add(InlineKeyboardButton(
-            text=f"{game_name} ({game_date.strftime('%d.%m/ %H:%M')}-{game[9]}))",
+            text=f"{game_name} ({game_date.strftime('%d.%m/ %H:%M')}-{game[9]})",
             callback_data=f"{action}_{game_id}"
         ))
     keyboard.adjust(1)
     return keyboard.as_markup()
 
 # Обновленная функция для клавиатуры отмены записи
-# Обновленная функция для клавиатуры отмены записи
 def get_cancel_registration_keyboard(registrations):
     keyboard = InlineKeyboardBuilder()
     for reg in registrations:
         game_id, game_name, game_date, location, player_name = reg
+        
+        # ★★★ ПОЛУЧАЕМ ПОЛНУЮ ИНФОРМАЦИЮ ОБ ИГРЕ ★★★
+        game = db.get_game_by_id(game_id)
+        if game:
+            end_time = game[9]  # end_time из базы данных
+        else:
+            end_time = '22:00'  # значение по умолчанию
+        
         keyboard.add(InlineKeyboardButton(
-            text=f"{game_name} ({game_date.strftime('%d.%m %H:%M')}) - {player_name}",
-            callback_data=f"cancelreg_{game_id}_{player_name}"  # Добавляем ник в callback
+            text=f"{game_name} ({game_date.strftime('%d.%m %H:%M')}-{game[9]} - {player_name})",
+            callback_data=f"cancelreg_{game_id}_{player_name.replace(' ', '_')}"
         ))
     keyboard.adjust(1)
     return keyboard.as_markup()
