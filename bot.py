@@ -722,7 +722,7 @@ async def show_game_lists_handler(message: Message):
         current_players = len([r for r in registrations if r[1] == 'registered'])
         
         keyboard.add(InlineKeyboardButton(
-            text=f"{game_name} ({game_date.strftime('%d.%m %H:%M')}) - {current_players}/{max_players}",
+            text=f"{game_name} ({game_date.strftime('%d.%m %H:%M')}-{game[9]}) - {current_players}/{max_players} игроков",
             callback_data=f"list_{game_id}"
         ))
     keyboard.adjust(1)
@@ -745,7 +745,7 @@ async def show_game_list_handler(callback: types.CallbackQuery):
         registrations = db.get_game_registrations(game_id)
         
         game_info = f"🎮 {game[1]}\n"
-        game_info += f"📅 {game[2].strftime('%d.%m.%Y')}\n"
+        game_info += f"📅 {game[2].strftime('%d.%m')}\n"
         game_info += f"🌃 {get_russian_weekday(game[2])}\n"
         game_info += f"📍 {game[6]}\n"
         game_info += f"🕢 {game[2].strftime('%H:%M')}-{game[9] or '22:00'}\n"
