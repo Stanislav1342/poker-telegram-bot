@@ -321,7 +321,7 @@ class Database:
             
             self.conn.commit()
             cursor.close()
-            return True, "✅ Вы успешно записаны на игру!"
+            return True, "Вы успешно записаны на игру!"
         except Exception as e:
             logging.error(f"❌ Ошибка записи на игру: {e}")
             return False, "❌ Ошибка при записи на игру"

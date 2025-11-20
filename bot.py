@@ -198,16 +198,45 @@ def get_games_selection_keyboard(games, action="select"):
     return keyboard.as_markup()
 
 # Обновленная функция для клавиатуры отмены записи
+# Обновленная функция для клавиатуры отмены записи
 def get_cancel_registration_keyboard(registrations):
     keyboard = InlineKeyboardBuilder()
     for reg in registrations:
         game_id, game_name, game_date, location, player_name = reg
         keyboard.add(InlineKeyboardButton(
             text=f"{game_name} ({game_date.strftime('%d.%m %H:%M')}) - {player_name}",
-            callback_data=f"cancelreg_{game_id}"
+            callback_data=f"cancelreg_{game_id}_{player_name}"  # Добавляем ник в callback
         ))
     keyboard.adjust(1)
     return keyboard.as_markup()
+
+@dp.callback_query(F.data.startswith("cancelreg_"))
+async def process_cancel_registration(callback: types.CallbackQuery):
+    try:
+        # Получаем game_id и player_name из callback_data
+        parts = callback.data.split('_')
+        game_id = int(parts[1])
+        player_name = '_'.join(parts[2:])  # Восстанавливаем ник (может содержать _)
+        player_name = player_name.replace('_', ' ')  # Заменяем _ обратно на пробелы
+        
+        user_id = callback.from_user.id
+        
+        if db.remove_player_from_game(game_id, player_name):
+            game = db.get_game_by_id(game_id)
+            await callback.message.answer(
+                f"✅ Запись на игру отменена!\n\n"
+                f"🎮 {game[1]}\n"
+                f"📅 {game[2].strftime('%d.%m.%Y %H:%M')}\n"
+                f"👤 Игрок: {player_name}",
+                reply_markup=get_games_keyboard()
+            )
+        else:
+            await callback.message.answer("❌ Ошибка при отмене записи")
+        
+        await callback.answer()
+        
+    except (ValueError, IndexError):
+        await callback.message.answer("❌ Ошибка при отмене записи")
 
 # Клавиатура для теста
 def get_test_keyboard(question_index):
@@ -693,7 +722,7 @@ async def show_game_lists_handler(message: Message):
         current_players = len([r for r in registrations if r[1] == 'registered'])
         
         keyboard.add(InlineKeyboardButton(
-            text=f"{game_name} ({current_players}/{max_players})",
+            text=f"{game_name} ({game_date.strftime('%d.%m %H:%M')}) - {current_players}/{max_players}",
             callback_data=f"list_{game_id}"
         ))
     keyboard.adjust(1)
@@ -716,7 +745,7 @@ async def show_game_list_handler(callback: types.CallbackQuery):
         registrations = db.get_game_registrations(game_id)
         
         game_info = f"🎮 {game[1]}\n"
-        game_info += f"📅 {game[2].strftime('%d.%m.%Y %H:%M')}\n"
+        game_info += f"📅 {game[2].strftime('%d.%m.%Y')}\n"
         game_info += f"🌃 {get_russian_weekday(game[2])}\n"
         game_info += f"📍 {game[6]}\n"
         game_info += f"🕢 {game[2].strftime('%H:%M')}-{game[9] or '22:00'}\n"
