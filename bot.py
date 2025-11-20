@@ -550,7 +550,7 @@ async def process_game_selection(callback: types.CallbackQuery, state: FSMContex
         
         if current_players >= max_players:
             await callback.message.answer(
-                f"❌ На эту игру уже набрано максимальное количество игроков ({max_players})",
+                f"❌ На эту игру уже набрано максимальное количество игроков ({max_players})\nОбратитесь к админестратору @babzuni777",
                 reply_markup=get_games_keyboard()
             )
             await callback.answer()
@@ -611,7 +611,7 @@ async def process_game_registration_name(message: Message, state: FSMContext):
             success_text = (
                 f"✅ {result_message}\n\n"
                 f"🎮 {game[1]}\n"
-                f"📅 {game[2].strftime('%d.%m %H:%M')}\n"
+                f"📅 {game[2].strftime('%d.%m %H:%M')-({game[9]})}\n"
                 f"👤 Ваш ник: {player_name}\n"
                 f"👥 Теперь игроков: {current_players}/{game[4]}"
             )
@@ -1581,8 +1581,7 @@ async def admin_all_players_handler(message: Message):
         registrations = db.get_game_registrations(game_id)
         
         all_players_text += f"🎮 {game_name}\n"
-        all_players_text += f"📅 {game_date.strftime('%d.%m.%Y %H:%M')}\n"
-        all_players_text += f"🌃 {get_russian_weekday(game_date)}\n"
+        all_players_text += f"🌃 {get_russian_weekday(game_date)} {game_date.strftime('%d.%m')}\n"
         all_players_text += f"📍 {location}\n"
         all_players_text += f"🕢 {game_date.strftime('%H:%M')}-{end_time or '22:00'}\n"
         all_players_text += f"💸 {int(buy_in)} рублей\n"
@@ -1590,7 +1589,7 @@ async def admin_all_players_handler(message: Message):
         all_players_text += f"👥 Игроков: {len(registrations)}/{max_players}\n"
         
         if registrations:
-            all_players_text += "📋 СПИСОК ИГРОКОВ:\n"
+            all_players_text += "\n📋 СПИСОК ИГРОКОВ:\n"
             for i, (name, status, rating, user_id) in enumerate(registrations, 1):
                 all_players_text += f"{i}. {name}\n"
         else:
