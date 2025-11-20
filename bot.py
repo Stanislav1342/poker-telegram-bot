@@ -191,7 +191,7 @@ def get_games_selection_keyboard(games, action="select"):
     for game in games:
         game_id, game_name, game_date, game_type, max_players, buy_in, location, status, host, end_time = game
         keyboard.add(InlineKeyboardButton(
-            text=f"{game_name} ({game_date.strftime('%d.%m %H:%M')})",
+            text=f"{game_name} ({game_date.strftime('%d.%m/ %H:%M')}-{game[9]}))",
             callback_data=f"{action}_{game_id}"
         ))
     keyboard.adjust(1)
@@ -505,11 +505,11 @@ async def upcoming_games_handler(message: Message):
         current_players = len([r for r in registrations if r[1] == 'registered'])
         
         games_text += f"🌃 {get_russian_weekday(game_date)} {game_date.strftime('%d.%m')}\n"
-        games_text += f"{game_name} 🃏\n"
+        games_text += f"{game_name} \n"
         games_text += f"{location}\n"
         games_text += f"🕢 {game_date.strftime('%H:%M')}-{end_time or '22:00'}\n"
         games_text += f"💸 {int(buy_in)} рублей\n"
-        games_text += f"Ведущий: {host or 'Капоне'}\n"
+        games_text += f"🎤 Ведущий: {host or 'Капоне'}\n"
         games_text += f"👥 Игроков: {current_players}/{max_players}\n\n"
     
     await message.answer(games_text)
@@ -556,7 +556,7 @@ async def process_game_selection(callback: types.CallbackQuery, state: FSMContex
             f"🌃 {get_russian_weekday(game[2])} {game[2].strftime('%d.%m')}\n"
             f"{game[1]} 🃏\n"
             f"{game[6]}\n"
-            f"🕢 {game[2].strftime('%H:%M')}-{game[9] or '22:00'}\n"
+            f"🕢 {game[2].strftime('%H:%M')}-{game[9]}\n"
             f"💸 {int(game[5])} рублей\n"
             f"🎤 Ведущий: {game[8] or 'Капоне'}\n"
             f"👥 Свободно мест: {max_players - current_players}/{max_players}\n\n"
@@ -604,7 +604,7 @@ async def process_game_registration_name(message: Message, state: FSMContext):
             success_text = (
                 f"✅ {result_message}\n\n"
                 f"🎮 {game[1]}\n"
-                f"📅 {game[2].strftime('%d.%m.%Y %H:%M')}\n"
+                f"📅 {game[2].strftime('%d.%m %H:%M')}\n"
                 f"👤 Ваш ник: {player_name}\n"
                 f"👥 Теперь игроков: {current_players}/{game[4]}"
             )
@@ -722,7 +722,7 @@ async def show_game_lists_handler(message: Message):
         current_players = len([r for r in registrations if r[1] == 'registered'])
         
         keyboard.add(InlineKeyboardButton(
-            text=f"{game_name} ({game_date.strftime('%d.%m %H:%M')}-{game[9]}) - {current_players}/{max_players} игроков",
+            text=f"{game_name} ({game_date.strftime('%d.%m/ %H:%M')}-{game[9]}) - {current_players}/{max_players} игроков",
             callback_data=f"list_{game_id}"
         ))
     keyboard.adjust(1)
@@ -745,8 +745,7 @@ async def show_game_list_handler(callback: types.CallbackQuery):
         registrations = db.get_game_registrations(game_id)
         
         game_info = f"🎮 {game[1]}\n"
-        game_info += f"📅 {game[2].strftime('%d.%m')}\n"
-        game_info += f"🌃 {get_russian_weekday(game[2])}\n"
+        game_info += f"🌃 {get_russian_weekday(game[2])} {game[2].strftime('%d.%m')}\n"
         game_info += f"📍 {game[6]}\n"
         game_info += f"🕢 {game[2].strftime('%H:%M')}-{game[9] or '22:00'}\n"
         game_info += f"💸 {int(game[5])} рублей\n"
