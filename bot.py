@@ -203,8 +203,16 @@ def get_games_selection_keyboard(games, action="select"):
     keyboard = InlineKeyboardBuilder()
     for game in games:
         game_id, game_name, game_date, game_type, max_players, buy_in, location, status, host, end_time = game
+        registrations = db.get_game_registrations(game_id)
+        current_players = len([r for r in registrations if r[1] == 'registered'])
+        
+        # ★★★ МНОГОСТРОЧНЫЙ ФОРМАТ С ЭМОДЗИ ★★★
+        button_text = f"""🎮 {game_name}
+📅 {game_date.strftime('%d.%m %H:%M')}-{end_time}
+👥 {current_players}/{max_players} игроков"""
+        
         keyboard.add(InlineKeyboardButton(
-            text=f"{game_name} ({game_date.strftime('%d.%m_%H:%M')}-{game[9]})",
+            text=button_text,
             callback_data=f"{action}_{game_id}"
         ))
     keyboard.adjust(1)
@@ -216,15 +224,19 @@ def get_cancel_registration_keyboard(registrations):
     for reg in registrations:
         game_id, game_name, game_date, location, player_name = reg
         
-        # ★★★ ПОЛУЧАЕМ ПОЛНУЮ ИНФОРМАЦИЮ ОБ ИГРЕ ★★★
         game = db.get_game_by_id(game_id)
         if game:
-            end_time = game[9]  # end_time из базы данных
+            end_time = game[9]
         else:
-            end_time = '22:00'  # значение по умолчанию
+            end_time = '22:00'
+        
+        # ★★★ МНОГОСТРОЧНЫЙ ФОРМАТ С ЭМОДЗИ ★★★
+        button_text = f"""🎮 {game_name}
+📅 {game_date.strftime('%d.%m %H:%M')}-{end_time}
+👤 {player_name}"""
         
         keyboard.add(InlineKeyboardButton(
-            text=f"{game_name} ({game_date.strftime('%d.%m_%H:%M')}-{game[9]} - {player_name})",
+            text=button_text,
             callback_data=f"cancelreg_{game_id}_{player_name.replace(' ', '_')}"
         ))
     keyboard.adjust(1)
@@ -803,8 +815,13 @@ async def show_game_lists_handler(message: Message):
         registrations = db.get_game_registrations(game_id)
         current_players = len([r for r in registrations if r[1] == 'registered'])
         
+        # ★★★ МНОГОСТРОЧНЫЙ ФОРМАТ С ЭМОДЗИ ★★★
+        button_text = f"""🎮 {game_name}
+📅 {game_date.strftime('%d.%m %H:%M')}-{end_time}
+👥 {current_players}/{max_players} игроков"""
+        
         keyboard.add(InlineKeyboardButton(
-            text=f"{game_name} ({game_date.strftime('%d.%m_%H:%M')}-{game[9]}) - {current_players}/{max_players} игроков",
+            text=button_text,
             callback_data=f"list_{game_id}"
         ))
     keyboard.adjust(1)
@@ -1032,8 +1049,16 @@ async def edit_games_handler(message: Message):
     keyboard = InlineKeyboardBuilder()
     for game in games:
         game_id, game_name, game_date, game_type, max_players, buy_in, location, status, host, end_time = game
+        registrations = db.get_game_registrations(game_id)
+        current_players = len([r for r in registrations if r[1] == 'registered'])
+        
+        # ★★★ МНОГОСТРОЧНЫЙ ФОРМАТ С ЭМОДЗИ ★★★
+        button_text = f"""🎮 {game_name}
+📅 {game_date.strftime('%d.%m %H:%M')}-{end_time}
+👥 {current_players}/{max_players} игроков"""
+        
         keyboard.add(InlineKeyboardButton(
-            text=f"🎮 {game_name}",
+            text=button_text,
             callback_data=f"manage_{game_id}"
         ))
     keyboard.adjust(1)
@@ -1336,8 +1361,13 @@ async def broadcast_game_select_handler(callback: types.CallbackQuery):
         registrations = db.get_game_registrations(game_id)
         current_players = len([r for r in registrations if r[1] == 'registered'])
         
+        # ★★★ МНОГОСТРОЧНЫЙ ФОРМАТ С ЭМОДЗИ ★★★
+        button_text = f"""🎮 {game_name}
+📅 {game_date.strftime('%d.%m %H:%M')}-{end_time}
+👥 {current_players} игроков"""
+        
         keyboard.add(InlineKeyboardButton(
-            text=f"🎮 {game_name} ({current_players} игр.)",
+            text=button_text,
             callback_data=f"broadcast_game_{game_id}"
         ))
     keyboard.add(InlineKeyboardButton(text="❌ Отменить", callback_data="broadcast_cancel"))
