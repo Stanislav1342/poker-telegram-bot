@@ -22,6 +22,15 @@ dp = Dispatcher()
 # Словарь для отслеживания уже обработанных запусков
 processed_starts = {}
 
+BOT_COMMANDS = [
+    "🎯 Мой рейтинг", "🏆 Общий рейтинг", "📚 Правила покера", "🧠 Тест по покеру", "🎮 Игры",
+    "📅 Предстоящие игры", "🎮 Записаться на игру", "❌ Отменить запись", "👥 Мои записи", "📋 Списки игроков",
+    "🔙 Главное меню", "👑 Админ-панель", "➕ Добавить игрока", "✏️ Изменить рейтинг", "🗑 Удалить игрока",
+    "📤 Загрузить карточку", "🎮 Управление играми", "🗑 Удалить все игры", "📋 Списки всех игроков",
+    "📢 Рассылка", "📊 Статистика БД", "➕ Создать игру", "📋 Редактировать игры", "🔙 Админ-панель",
+    "🔙 Назад к играм", "/start"
+]
+
 # Состояния для FSM
 class UserStates(StatesGroup):
     waiting_for_player_name = State()
@@ -575,10 +584,20 @@ async def process_game_selection(callback: types.CallbackQuery, state: FSMContex
     except (ValueError, IndexError):
         await callback.message.answer("❌ Ошибка выбора игры")
 
+# Обнови обработчик состояния записи на игру
 @dp.message(UserStates.user_register_for_game)
 async def process_game_registration_name(message: Message, state: FSMContext):
     try:
         player_name = message.text.strip()
+        
+        # ★★★ ПРОВЕРКА: Запрещаем использовать команды бота в качестве ника ★★★
+        if player_name in BOT_COMMANDS:
+            await message.answer(
+                "❌ Нельзя использовать команды бота в качестве ника!\n\n"
+                "👤 Пожалуйста, введите ваш игровой никнейм:"
+            )
+            return
+        
         data = await state.get_data()
         game_id = data.get('game_id')
         
@@ -619,6 +638,10 @@ async def process_game_registration_name(message: Message, state: FSMContext):
         else:
             await message.answer(result_message, reply_markup=get_games_keyboard())
         
+        await state.clear()
+        
+    except Exception as e:
+        await message.answer("❌ Произошла ошибка при записи на игру", reply_markup=get_games_keyboard())
         await state.clear()
         
     except Exception as e:
