@@ -554,6 +554,25 @@ async def upcoming_games_handler(message: Message):
     
     await message.answer(games_text)
 
+def get_games_selection_reply_keyboard(games):
+    """Reply-клавиатура для выбора игр с полной информацией"""
+    keyboard = ReplyKeyboardBuilder()
+    for game in games:
+        game_id, game_name, game_date, game_type, max_players, buy_in, location, status, host, end_time = game
+        registrations = db.get_game_registrations(game_id)
+        current_players = len([r for r in registrations if r[1] == 'registered'])
+        
+        # ★★★ ПОЛНАЯ ИНФОРМАЦИЯ С ПЕРЕНОСАМИ ★★★
+        button_text = f"""🎮 {game_name}
+📅 {game_date.strftime('%d.%m %H:%M')}-{end_time}
+👥 {current_players}/{max_players} игроков"""
+        
+        keyboard.add(KeyboardButton(text=button_text))
+    
+    keyboard.add(KeyboardButton(text="🚫 Отменить действие"))
+    keyboard.adjust(1)
+    return keyboard.as_markup(resize_keyboard=True)
+
 @dp.message(F.text == "🎮 Записаться на игру")
 async def register_game_handler(message: Message, state: FSMContext):
     games = db.get_upcoming_games()
@@ -564,8 +583,49 @@ async def register_game_handler(message: Message, state: FSMContext):
     
     await message.answer(
         "🎮 Выберите игру для записи:",
-        reply_markup=get_games_selection_keyboard(games, "register")
+        reply_markup=get_games_selection_reply_keyboard(games)
     )
+    await state.set_state(UserStates.user_select_game)
+
+@dp.message(UserStates.user_select_game)
+async def process_game_selection_reply(message: Message, state: FSMContext):
+    try:
+        # Ищем игру по тексту кнопки
+        button_text = message.text
+        games = db.get_upcoming_games()
+        
+        selected_game = None
+        for game in games:
+            game_id, game_name, game_date, game_type, max_players, buy_in, location, status, host, end_time = game
+            expected_text = f"""🎮 {game_name}
+📅 {game_date.strftime('%d.%m %H:%M')}-{end_time}
+👥 {len(db.get_game_registrations(game_id))}/{max_players} игроков"""
+            
+            if button_text == expected_text:
+                selected_game = game
+                break
+        
+        if not selected_game:
+            if button_text == "🚫 Отменить действие":
+                await message.answer("✅ Действие отменено", reply_markup=get_games_keyboard())
+                await state.clear()
+                return
+            await message.answer("❌ Игра не найдена")
+            return
+        
+        game_id = selected_game[0]
+        await state.update_data(game_id=game_id)
+        
+        await message.answer(
+            f"👤 Введите ваш игровой никнейм для записи:",
+            reply_markup=get_cancel_action_keyboard()
+        )
+        await state.set_state(UserStates.user_register_for_game)
+        
+    except Exception as e:
+        logging.error(f"❌ Ошибка выбора игры: {e}")
+        await message.answer("❌ Ошибка выбора игры", reply_markup=get_games_keyboard())
+        await state.clear()
 
 @dp.callback_query(F.data.startswith("register_"))
 async def process_game_selection(callback: types.CallbackQuery, state: FSMContext):
