@@ -112,6 +112,10 @@ def normalize_name(name):
     """Нормализация имени: заменяет ё на е и приводит к нижнему регистру"""
     return name.lower().replace('ё', 'е')
 
+def normalize_name_for_comparison(name):
+    """Нормализация имени для сравнения: заменяет ё на е, нижний регистр, убирает пробелы"""
+    return name.lower().replace('ё', 'е').strip()
+
 # Проверка является ли пользователь админом
 def is_admin(user_id):
     admin_ids = [1308823467]
@@ -585,6 +589,12 @@ async def process_game_selection(callback: types.CallbackQuery, state: FSMContex
         await callback.message.answer("❌ Ошибка выбора игры")
 
 # Обнови обработчик состояния записи на игру
+# Добавь эту функцию в раздел с другими функциями (после normalize_name)
+def normalize_name_for_comparison(name):
+    """Нормализация имени для сравнения: заменяет ё на е, нижний регистр, убирает пробелы"""
+    return name.lower().replace('ё', 'е').strip()
+
+# Обнови обработчик записи на игру
 @dp.message(UserStates.user_register_for_game)
 async def process_game_registration_name(message: Message, state: FSMContext):
     try:
@@ -598,6 +608,21 @@ async def process_game_registration_name(message: Message, state: FSMContext):
             )
             return
         
+        # ★★★ ПРОВЕРКА: Длина ника ★★★
+        if len(player_name) < 2:
+            await message.answer(
+                "❌ Слишком короткий ник! Минимум 2 символа.\n\n"
+                "👤 Пожалуйста, введите ваш игровой никнейм:"
+            )
+            return
+
+        if len(player_name) > 30:
+            await message.answer(
+                "❌ Слишком длинный ник! Максимум 30 символов.\n\n"
+                "👤 Пожалуйста, введите ваш игровой никнейм:"
+            )
+            return
+        
         data = await state.get_data()
         game_id = data.get('game_id')
         
@@ -606,13 +631,26 @@ async def process_game_registration_name(message: Message, state: FSMContext):
             await state.clear()
             return
         
-        # ★★★ ПРОВЕРКА: Уже есть ли такой ник на этой игре ★★★
+        # ★★★ ОБНОВЛЕННАЯ ПРОВЕРКА: Уже есть ли такой ник на этой игре (с учетом регистра) ★★★
         registrations = db.get_game_registrations(game_id)
         existing_players = [name for name, status, rating, user_id in registrations]
         
-        if player_name in existing_players:
+        # Нормализуем введенное имя для сравнения
+        normalized_input_name = normalize_name_for_comparison(player_name)
+        
+        # Проверяем на дубликаты с учетом регистра
+        duplicate_found = False
+        existing_duplicate_name = None
+        
+        for existing_name in existing_players:
+            if normalize_name_for_comparison(existing_name) == normalized_input_name:
+                duplicate_found = True
+                existing_duplicate_name = existing_name
+                break
+        
+        if duplicate_found:
             await message.answer(
-                f"❌ Игрок с ником '{player_name}' уже записан на эту игру.\n\n"
+                f"❌ Игрок с ником '{existing_duplicate_name}' уже записан на эту игру.\n\n"
                 f"Пожалуйста, выберите другой никнейм для записи:"
             )
             return
@@ -638,6 +676,11 @@ async def process_game_registration_name(message: Message, state: FSMContext):
         else:
             await message.answer(result_message, reply_markup=get_games_keyboard())
         
+        await state.clear()
+        
+    except Exception as e:
+        logging.error(f"❌ Ошибка при записи на игру: {e}")
+        await message.answer("❌ Произошла ошибка при записи на игру", reply_markup=get_games_keyboard())
         await state.clear()
         
     except Exception as e:
