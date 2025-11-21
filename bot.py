@@ -954,6 +954,50 @@ def get_admin_games_keyboard():
     keyboard.adjust(2)
     return keyboard.as_markup(resize_keyboard=True)
 
+@dp.message(F.text == "📋 Редактировать игры")
+async def edit_games_handler(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    
+    games = db.get_upcoming_games()
+    
+    if not games:
+        await message.answer("🎉 Нет активных игр для редактирования")
+        return
+    
+    games_text = "🎯 АКТИВНЫЕ ИГРЫ ДЛЯ РЕДАКТИРОВАНИЯ:\n\n"
+    for game in games:
+        game_id, game_name, game_date, game_type, max_players, buy_in, location, status, host, end_time = game
+        registrations = db.get_game_registrations(game_id)
+        current_players = len([r for r in registrations if r[1] == 'registered'])
+        
+        games_text += f"🎮 {game_name}\n"
+        games_text += f"📅 {game_date.strftime('%d.%m %H:%M')}\n"
+        games_text += f"📍 {location}\n" 
+        games_text += f"👥 {current_players}/{max_players} игроков\n"
+        games_text += f"💸 {int(buy_in)} руб.\n\n"
+    
+    keyboard = InlineKeyboardBuilder()
+    for game in games:
+        game_id, game_name, game_date, game_type, max_players, buy_in, location, status, host, end_time = game
+        registrations = db.get_game_registrations(game_id)
+        current_players = len([r for r in registrations if r[1] == 'registered'])
+        
+        short_name = get_unique_short_name(game_name)
+        
+        button_text = f"{short_name} | {game_date.strftime('%d.%m %H:%M')}-{end_time} | {current_players}/{max_players}"
+        
+        keyboard.add(InlineKeyboardButton(
+            text=button_text,
+            callback_data=f"manage_{game_id}"
+        ))
+    keyboard.adjust(1)
+    
+    await message.answer(
+        games_text + "🛠️ Выберите игру для управления:",
+        reply_markup=keyboard.as_markup()
+    )
+
 @dp.message(F.text == "➕ Создать игру")
 async def create_game_handler(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
