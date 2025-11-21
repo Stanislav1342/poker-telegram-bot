@@ -396,7 +396,7 @@ async def process_player_name(message: Message, state: FSMContext):
         player_card = db.get_player_card(found_player)
         
         rating_text = (
-            f"📄 👤 {found_player}\n"
+            f"👤 {found_player}\n"
             f"⭐️ Рейтинг: {player_rating}\n"
             f"🏆 Место в рейтинге: {position}\n"
         )
@@ -2130,7 +2130,7 @@ async def admin_all_players_handler(message: Message):
         all_players_text += f"👥 Игроков: {len(registrations)}/{max_players}\n"
         
         if registrations:
-            all_players_text += "\n📋 СПИСОК ИГРОКОВ:\n"
+            all_players_text += "📋 СПИСОК ИГРОКОВ:\n"
             for i, (name, status, rating, user_id) in enumerate(registrations, 1):
                 all_players_text += f"{i}. {name}\n"
         else:
