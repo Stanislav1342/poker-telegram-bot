@@ -1050,7 +1050,7 @@ async def process_game_date(message: Message, state: FSMContext):
         start_time_str, end_time_str = time_part.split('-')
         
         current_year = datetime.now().year
-        start_datetime = datetime.strptime(f"{date_part}.{current_year} {start_time_str}", "%d.%m %H:%M")
+        start_datetime = datetime.strptime(f"{date_part}.{current_year} {start_time_str}", "%d.%m.%Y %H:%M")
         
         await state.update_data(
             game_date=start_datetime,
