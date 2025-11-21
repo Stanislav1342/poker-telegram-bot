@@ -38,8 +38,18 @@ class UserStates(StatesGroup):
     admin_remove_player = State()
     admin_update_rating = State()
     poker_test = State()
+    admin_update_game_host = State()
+    admin_update_game_time = State()
+    admin_update_game_date = State()
+    admin_update_game_location = State()
     
     # состояния для игр
+    admin_create_game_name = State()
+    admin_create_game_date = State()
+    admin_create_game_players = State()
+    admin_create_game_location = State()
+    admin_create_game_price = State()
+    admin_create_game_host = State()
     admin_create_game_name = State()
     admin_create_game_date = State()
     admin_create_game_players = State()
@@ -189,11 +199,19 @@ def get_admin_games_keyboard():
     return keyboard.as_markup(resize_keyboard=True)
 
 # Клавиатура для управления конкретной игрой
+# Расширяем клавиатуру управления игрой
 def get_game_management_keyboard(game_id):
     keyboard = InlineKeyboardBuilder()
     keyboard.add(InlineKeyboardButton(text="📋 Список игроков", callback_data=f"list_{game_id}"))
     keyboard.add(InlineKeyboardButton(text="✏️ Изменить лимит", callback_data=f"limit_{game_id}"))
     keyboard.add(InlineKeyboardButton(text="🗑 Удалить игрока", callback_data=f"remove_{game_id}"))
+    
+    # ★★★ НОВЫЕ КНОПКИ ★★★
+    keyboard.add(InlineKeyboardButton(text="🎤 Изменить ведущего", callback_data=f"host_{game_id}"))
+    keyboard.add(InlineKeyboardButton(text="🕒 Изменить время", callback_data=f"time_{game_id}"))
+    keyboard.add(InlineKeyboardButton(text="📅 Изменить дату", callback_data=f"date_{game_id}"))
+    keyboard.add(InlineKeyboardButton(text="📍 Изменить адрес", callback_data=f"location_{game_id}"))
+    
     keyboard.add(InlineKeyboardButton(text="❌ Удалить игру", callback_data=f"delete_game_{game_id}"))
     keyboard.adjust(1)
     return keyboard.as_markup()
@@ -259,6 +277,20 @@ def get_cancel_action_keyboard():
     """Клавиатура для отмены действия (процесса записи)"""
     keyboard = ReplyKeyboardBuilder()
     keyboard.add(KeyboardButton(text="🚫 Отменить действие"))
+    keyboard.adjust(1)
+    return keyboard.as_markup(resize_keyboard=True)
+
+def get_cancel_creation_keyboard():
+    """Клавиатура для отмены создания игры"""
+    keyboard = ReplyKeyboardBuilder()
+    keyboard.add(KeyboardButton(text="❌ Отменить создание"))
+    keyboard.adjust(1)
+    return keyboard.as_markup(resize_keyboard=True)
+
+# Клавиатура для отмены редактирования
+def get_cancel_edit_keyboard():
+    keyboard = ReplyKeyboardBuilder()
+    keyboard.add(KeyboardButton(text="❌ Отменить редактирование"))
     keyboard.adjust(1)
     return keyboard.as_markup(resize_keyboard=True)
 
@@ -913,6 +945,15 @@ async def admin_games_handler(message: Message):
         reply_markup=get_admin_games_keyboard()
     )
 
+# Убедись что эта функция существует и возвращает правильную клавиатуру
+def get_admin_games_keyboard():
+    keyboard = ReplyKeyboardBuilder()
+    keyboard.add(KeyboardButton(text="➕ Создать игру"))
+    keyboard.add(KeyboardButton(text="📋 Редактировать игры"))
+    keyboard.add(KeyboardButton(text="🔙 Админ-панель"))
+    keyboard.adjust(2)
+    return keyboard.as_markup(resize_keyboard=True)
+
 @dp.message(F.text == "➕ Создать игру")
 async def create_game_handler(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
@@ -920,34 +961,52 @@ async def create_game_handler(message: Message, state: FSMContext):
     
     await message.answer(
         "🎮 Введите название игры:\n\n"
-        "Пример: 'MagnumPokerLeague' или 'Турнир по Техасскому Холдему'"
+        "Пример: 'MagnumPokerLeague' или 'Городская мафия'\n\n"
+        "❌ Или нажмите 'Отменить создание' чтобы вернуться назад",
+        reply_markup=get_cancel_creation_keyboard()
     )
     await state.set_state(UserStates.admin_create_game_name)
 
 @dp.message(UserStates.admin_create_game_name)
 async def process_game_name(message: Message, state: FSMContext):
+    if message.text == "❌ Отменить создание":
+        await message.answer("✅ Создание игры отменено", reply_markup=get_admin_games_keyboard())
+        await state.clear()
+        return
+    
     game_name = message.text.strip()
     if len(game_name) < 2:
-        await message.answer("❌ Название игры должно содержать минимум 2 символа")
+        await message.answer(
+            "❌ Название игры должно содержать минимум 2 символа\n\n"
+            "Пожалуйста, введите название игры:",
+            reply_markup=get_cancel_creation_keyboard()
+        )
         return
     
     await state.update_data(game_name=game_name)
     await message.answer(
         "📅 Введите дату и время для игры:\n\n"
         "Формат: ДД.ММ ЧЧ:ММ-ЧЧ:ММ\n"
-        "Пример: 23.04 18:00-23:30"
+        "Пример: 23.04 18:00-23:30\n\n"
+        "❌ Или нажмите 'Отменить создание' чтобы вернуться назад",
+        reply_markup=get_cancel_creation_keyboard()
     )
     await state.set_state(UserStates.admin_create_game_date)
 
 @dp.message(UserStates.admin_create_game_date)
 async def process_game_date(message: Message, state: FSMContext):
+    if message.text == "❌ Отменить создание":
+        await message.answer("✅ Создание игры отменено", reply_markup=get_admin_games_keyboard())
+        await state.clear()
+        return
+    
     try:
         date_time_str = message.text.strip()
         date_part, time_part = date_time_str.split(' ')
         start_time_str, end_time_str = time_part.split('-')
         
         current_year = datetime.now().year
-        start_datetime = datetime.strptime(f"{date_part}.{current_year} {start_time_str}", "%d.%m.%Y %H:%M")
+        start_datetime = datetime.strptime(f"{date_part}.{current_year} {start_time_str}", "%d.%m %H:%M")
         
         await state.update_data(
             game_date=start_datetime,
@@ -955,63 +1014,114 @@ async def process_game_date(message: Message, state: FSMContext):
         )
         await message.answer(
             "👥 Введите максимальное количество игроков:\n\n"
-            "Пример: 9, 18, 27"
+            "Пример: 9, 18, 27\n\n"
+            "❌ Или нажмите 'Отменить создание' чтобы вернуться назад",
+            reply_markup=get_cancel_creation_keyboard()
         )
         await state.set_state(UserStates.admin_create_game_players)
         
     except ValueError:
-        await message.answer("❌ Неверный формат. Используйте: ДД.ММ ЧЧ:ММ-ЧЧ:ММ\nПример: 23.04 18:00-23:30")
+        await message.answer(
+            "❌ Неверный формат. Используйте: ДД.ММ ЧЧ:ММ-ЧЧ:ММ\n"
+            "Пример: 23.04 18:00-23:30\n\n"
+            "Пожалуйста, введите дату и время:",
+            reply_markup=get_cancel_creation_keyboard()
+        )
 
 @dp.message(UserStates.admin_create_game_players)
 async def process_game_players(message: Message, state: FSMContext):
+    if message.text == "❌ Отменить создание":
+        await message.answer("✅ Создание игры отменено", reply_markup=get_admin_games_keyboard())
+        await state.clear()
+        return
+    
     try:
         max_players = int(message.text.strip())
         
         if max_players <= 0:
-            await message.answer("❌ Количество игроков должно быть больше 0")
+            await message.answer(
+                "❌ Количество игроков должно быть больше 0\n\n"
+                "Пожалуйста, введите максимальное количество игроков:",
+                reply_markup=get_cancel_creation_keyboard()
+            )
             return
         
         await state.update_data(max_players=max_players)
         await message.answer(
             "📍 Введите адрес проведения игры:\n\n"
-            "Пример: 'Арабист (Большая Андроньевская 23)'"
+            "Пример: 'Арабист (Большая Андроньевская 23) Метро: Таганская/Римская/Площадь Ильича'\n\n"
+            "❌ Или нажмите 'Отменить создание' чтобы вернуться назад",
+            reply_markup=get_cancel_creation_keyboard()
         )
         await state.set_state(UserStates.admin_create_game_location)
         
     except ValueError:
-        await message.answer("❌ Введите корректное число игроков")
+        await message.answer(
+            "❌ Введите корректное число игроков\n\n"
+            "Пример: 9, 18, 27\n\n"
+            "Пожалуйста, введите максимальное количество игроков:",
+            reply_markup=get_cancel_creation_keyboard()
+        )
 
 @dp.message(UserStates.admin_create_game_location)
 async def process_game_location(message: Message, state: FSMContext):
+    if message.text == "❌ Отменить создание":
+        await message.answer("✅ Создание игры отменено", reply_markup=get_admin_games_keyboard())
+        await state.clear()
+        return
+    
     location = message.text.strip()
     await state.update_data(location=location)
     await message.answer(
         "💸 Введите стоимость участия в рублях:\n\n"
-        "Пример: 1200, 1500, 2000"
+        "Пример: 900, 1200\n\n"
+        "❌ Или нажмите 'Отменить создание' чтобы вернуться назад",
+        reply_markup=get_cancel_creation_keyboard()
     )
     await state.set_state(UserStates.admin_create_game_price)
 
 @dp.message(UserStates.admin_create_game_price)
 async def process_game_price(message: Message, state: FSMContext):
+    if message.text == "❌ Отменить создание":
+        await message.answer("✅ Создание игры отменено", reply_markup=get_admin_games_keyboard())
+        await state.clear()
+        return
+    
     try:
         price = int(message.text.strip())
         
         if price <= 0:
-            await message.answer("❌ Стоимость должна быть больше 0")
+            await message.answer(
+                "❌ Стоимость должна быть больше 0\n\n"
+                "Пожалуйста, введите стоимость участия:",
+                reply_markup=get_cancel_creation_keyboard()
+            )
             return
         
         await state.update_data(price=price)
         await message.answer(
             "🎤 Введите имя ведущего игры:\n\n"
-            "Пример: Капоне, Стас, Иван"
+            "Пример: Капоне, Стас\n\n"
+            "❌ Или нажмите 'Отменить создание' чтобы вернуться назад",
+            reply_markup=get_cancel_creation_keyboard()
         )
         await state.set_state(UserStates.admin_create_game_host)
         
     except ValueError:
-        await message.answer("❌ Введите корректную стоимость (число)")
+        await message.answer(
+            "❌ Введите корректную стоимость (число)\n\n"
+            "Пример: 1200, 1500, 2000\n\n"
+            "Пожалуйста, введите стоимость участия:",
+            reply_markup=get_cancel_creation_keyboard()
+        )
 
 @dp.message(UserStates.admin_create_game_host)
 async def process_game_host(message: Message, state: FSMContext):
+    if message.text == "❌ Отменить создание":
+        await message.answer("✅ Создание игры отменено", reply_markup=get_admin_games_keyboard())
+        await state.clear()
+        return
+    
     host = message.text.strip()
     data = await state.get_data()
     
@@ -1046,7 +1156,10 @@ async def process_game_host(message: Message, state: FSMContext):
             reply_markup=get_admin_games_keyboard()
         )
     else:
-        await message.answer("❌ Ошибка при создании игры")
+        await message.answer(
+            "❌ Ошибка при создании игры",
+            reply_markup=get_admin_games_keyboard()
+        )
     
     await state.clear()
 
@@ -1289,6 +1402,260 @@ async def confirm_delete_specific_game_handler(callback: types.CallbackQuery):
 async def cancel_delete_specific_game_handler(callback: types.CallbackQuery):
     await callback.message.answer("❌ Удаление игры отменено", reply_markup=get_admin_games_keyboard())
     await callback.answer()
+
+# 1. ОБРАБОТЧИК ИЗМЕНЕНИЯ ВЕДУЩЕГО
+@dp.callback_query(F.data.startswith("host_"))
+async def change_game_host_handler(callback: types.CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        return
+    
+    try:
+        game_id = int(callback.data.split('_')[1])
+        game = db.get_game_by_id(game_id)
+        
+        if not game:
+            await callback.message.answer("❌ Игра не найдена")
+            return
+        
+        await state.update_data(game_id=game_id)
+        await callback.message.answer(
+            f"🎤 Изменение ведущего:\n\n"
+            f"🎮 {game[1]}\n"
+            f"📅 {game[2].strftime('%d.%m.%Y %H:%M')}\n"
+            f"🎤 Текущий ведущий: {game[8] or 'Капоне'}\n\n"
+            "Введите нового ведущего:\n\n"
+            "❌ Или нажмите 'Отменить редактирование'",
+            reply_markup=get_cancel_edit_keyboard()
+        )
+        await state.set_state(UserStates.admin_update_game_host)
+        await callback.answer()
+        
+    except (ValueError, IndexError):
+        await callback.message.answer("❌ Ошибка при изменении ведущего")
+
+@dp.message(UserStates.admin_update_game_host)
+async def process_game_host_update(message: Message, state: FSMContext):
+    if message.text == "❌ Отменить редактирование":
+        await message.answer("✅ Редактирование отменено", reply_markup=get_admin_games_keyboard())
+        await state.clear()
+        return
+    
+    new_host = message.text.strip()
+    data = await state.get_data()
+    game_id = data.get('game_id')
+    
+    if db.update_game_host(game_id, new_host):
+        game = db.get_game_by_id(game_id)
+        await message.answer(
+            f"✅ Ведущий обновлен!\n\n"
+            f"🎮 {game[1]}\n"
+            f"🎤 Новый ведущий: {new_host}",
+            reply_markup=get_admin_games_keyboard()
+        )
+    else:
+        await message.answer("❌ Ошибка при обновлении ведущего")
+    
+    await state.clear()
+
+# 2. ОБРАБОТЧИК ИЗМЕНЕНИЯ ВРЕМЕНИ
+@dp.callback_query(F.data.startswith("time_"))
+async def change_game_time_handler(callback: types.CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        return
+    
+    try:
+        game_id = int(callback.data.split('_')[1])
+        game = db.get_game_by_id(game_id)
+        
+        if not game:
+            await callback.message.answer("❌ Игра не найдена")
+            return
+        
+        await state.update_data(game_id=game_id)
+        await callback.message.answer(
+            f"🕒 Изменение времени:\n\n"
+            f"🎮 {game[1]}\n"
+            f"📅 {game[2].strftime('%d.%m.%Y')}\n"
+            f"🕒 Текущее время: {game[2].strftime('%H:%M')}-{game[9]}\n\n"
+            "Введите новое время в формате ЧЧ:ММ-ЧЧ:ММ:\n"
+            "Пример: 18:00-23:30\n\n"
+            "❌ Или нажмите 'Отменить редактирование'",
+            reply_markup=get_cancel_edit_keyboard()
+        )
+        await state.set_state(UserStates.admin_update_game_time)
+        await callback.answer()
+        
+    except (ValueError, IndexError):
+        await callback.message.answer("❌ Ошибка при изменении времени")
+
+@dp.message(UserStates.admin_update_game_time)
+async def process_game_time_update(message: Message, state: FSMContext):
+    if message.text == "❌ Отменить редактирование":
+        await message.answer("✅ Редактирование отменено", reply_markup=get_admin_games_keyboard())
+        await state.clear()
+        return
+    
+    try:
+        time_str = message.text.strip()
+        start_time_str, end_time_str = time_str.split('-')
+        
+        # Проверяем формат времени
+        datetime.strptime(start_time_str, "%H:%M")
+        datetime.strptime(end_time_str, "%H:%M")
+        
+        data = await state.get_data()
+        game_id = data.get('game_id')
+        
+        if db.update_game_time(game_id, start_time_str, end_time_str):
+            game = db.get_game_by_id(game_id)
+            await message.answer(
+                f"✅ Время обновлено!\n\n"
+                f"🎮 {game[1]}\n"
+                f"🕒 Новое время: {start_time_str}-{end_time_str}",
+                reply_markup=get_admin_games_keyboard()
+            )
+        else:
+            await message.answer("❌ Ошибка при обновлении времени")
+        
+        await state.clear()
+        
+    except ValueError:
+        await message.answer(
+            "❌ Неверный формат времени. Используйте: ЧЧ:ММ-ЧЧ:ММ\n"
+            "Пример: 18:00-23:30\n\n"
+            "Пожалуйста, введите время:",
+            reply_markup=get_cancel_edit_keyboard()
+        )
+
+# 3. ОБРАБОТЧИК ИЗМЕНЕНИЯ ДАТЫ
+@dp.callback_query(F.data.startswith("date_"))
+async def change_game_date_handler(callback: types.CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        return
+    
+    try:
+        game_id = int(callback.data.split('_')[1])
+        game = db.get_game_by_id(game_id)
+        
+        if not game:
+            await callback.message.answer("❌ Игра не найдена")
+            return
+        
+        await state.update_data(game_id=game_id)
+        await callback.message.answer(
+            f"📅 Изменение даты:\n\n"
+            f"🎮 {game[1]}\n"
+            f"📅 Текущая дата: {game[2].strftime('%d.%m.%Y')}\n"
+            f"🕒 Время: {game[2].strftime('%H:%M')}-{game[9]}\n\n"
+            "Введите новую дату в формате ДД.ММ.ГГГГ:\n"
+            "Пример: 25.12.2024\n\n"
+            "❌ Или нажмите 'Отменить редактирование'",
+            reply_markup=get_cancel_edit_keyboard()
+        )
+        await state.set_state(UserStates.admin_update_game_date)
+        await callback.answer()
+        
+    except (ValueError, IndexError):
+        await callback.message.answer("❌ Ошибка при изменении даты")
+
+@dp.message(UserStates.admin_update_game_date)
+async def process_game_date_update(message: Message, state: FSMContext):
+    if message.text == "❌ Отменить редактирование":
+        await message.answer("✅ Редактирование отменено", reply_markup=get_admin_games_keyboard())
+        await state.clear()
+        return
+    
+    try:
+        date_str = message.text.strip()
+        new_date = datetime.strptime(date_str, "%d.%m.%Y")
+        
+        data = await state.get_data()
+        game_id = data.get('game_id')
+        game = db.get_game_by_id(game_id)
+        
+        if game:
+            # Сохраняем старое время, меняем только дату
+            old_datetime = game[2]
+            new_datetime = new_date.replace(
+                hour=old_datetime.hour,
+                minute=old_datetime.minute
+            )
+            
+            if db.update_game_date(game_id, new_datetime):
+                await message.answer(
+                    f"✅ Дата обновлена!\n\n"
+                    f"🎮 {game[1]}\n"
+                    f"📅 Новая дата: {new_date.strftime('%d.%m.%Y')}",
+                    reply_markup=get_admin_games_keyboard()
+                )
+            else:
+                await message.answer("❌ Ошибка при обновлении даты")
+        else:
+            await message.answer("❌ Игра не найдена")
+        
+        await state.clear()
+        
+    except ValueError:
+        await message.answer(
+            "❌ Неверный формат даты. Используйте: ДД.ММ.ГГГГ\n"
+            "Пример: 25.12.2024\n\n"
+            "Пожалуйста, введите дату:",
+            reply_markup=get_cancel_edit_keyboard()
+        )
+
+# 4. ОБРАБОТЧИК ИЗМЕНЕНИЯ АДРЕСА
+@dp.callback_query(F.data.startswith("location_"))
+async def change_game_location_handler(callback: types.CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        return
+    
+    try:
+        game_id = int(callback.data.split('_')[1])
+        game = db.get_game_by_id(game_id)
+        
+        if not game:
+            await callback.message.answer("❌ Игра не найдена")
+            return
+        
+        await state.update_data(game_id=game_id)
+        await callback.message.answer(
+            f"📍 Изменение адреса:\n\n"
+            f"🎮 {game[1]}\n"
+            f"📅 {game[2].strftime('%d.%m.%Y %H:%M')}\n"
+            f"📍 Текущий адрес: {game[6] or 'Не указан'}\n\n"
+            "Введите новый адрес:\n\n"
+            "❌ Или нажмите 'Отменить редактирование'",
+            reply_markup=get_cancel_edit_keyboard()
+        )
+        await state.set_state(UserStates.admin_update_game_location)
+        await callback.answer()
+        
+    except (ValueError, IndexError):
+        await callback.message.answer("❌ Ошибка при изменении адреса")
+
+@dp.message(UserStates.admin_update_game_location)
+async def process_game_location_update(message: Message, state: FSMContext):
+    if message.text == "❌ Отменить редактирование":
+        await message.answer("✅ Редактирование отменено", reply_markup=get_admin_games_keyboard())
+        await state.clear()
+        return
+    
+    new_location = message.text.strip()
+    data = await state.get_data()
+    game_id = data.get('game_id')
+    
+    if db.update_game_location(game_id, new_location):
+        game = db.get_game_by_id(game_id)
+        await message.answer(
+            f"✅ Адрес обновлен!\n\n"
+            f"🎮 {game[1]}\n"
+            f"📍 Новый адрес: {new_location}",
+            reply_markup=get_admin_games_keyboard()
+        )
+    else:
+        await message.answer("❌ Ошибка при обновлении адреса")
+    
+    await state.clear()
 
 @dp.message(F.text == "🗑 Удалить все игры")
 async def delete_all_games_handler(message: Message):
@@ -1760,6 +2127,8 @@ async def db_check_handler(message: Message):
         
     except Exception as e:
         await message.answer(f"🔴 ОШИБКА БАЗЫ ДАННЫХ:\n{str(e)}")
+
+
 
 @dp.message(F.text == "🔙 Главное меню")
 async def main_menu_handler(message: Message):

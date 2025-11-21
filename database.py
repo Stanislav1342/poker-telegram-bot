@@ -154,6 +154,278 @@ class Database:
             logging.error(f"❌ Ошибка получения всех пользователей бота: {e}")
             return []
 
+    # В класс Database добавить эти методы:
+
+    def update_game_host(self, game_id, new_host):
+        """Обновление ведущего игры"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute('UPDATE games SET host = %s WHERE id = %s', (new_host, game_id))
+            self.conn.commit()
+            cursor.close()
+            return cursor.rowcount > 0
+        except Exception as e:
+            logging.error(f"❌ Ошибка обновления ведущего: {e}")
+            return False
+
+    def update_game_time(self, game_id, start_time, end_time):
+        """Обновление времени игры"""
+        try:
+            cursor = self.conn.cursor()
+            # Получаем текущую дату
+            cursor.execute('SELECT game_date FROM games WHERE id = %s', (game_id,))
+            result = cursor.fetchone()
+            if not result:
+                return False
+                
+            current_date = result[0]
+            
+            # Создаем новую дату-время
+            new_datetime = current_date.replace(
+                hour=int(start_time.split(':')[0]),
+                minute=int(start_time.split(':')[1])
+            )
+            
+            cursor.execute(
+                'UPDATE games SET game_date = %s, end_time = %s WHERE id = %s',
+                (new_datetime, end_time, game_id)
+            )
+            self.conn.commit()
+            cursor.close()
+            return cursor.rowcount > 0
+        except Exception as e:
+            logging.error(f"❌ Ошибка обновления времени: {e}")
+            return False
+
+    def update_game_date(self, game_id, new_date):
+        """Обновление даты игры"""
+        try:
+            cursor = self.conn.cursor()
+            # Получаем текущее время
+            cursor.execute('SELECT game_date FROM games WHERE id = %s', (game_id,))
+            result = cursor.fetchone()
+            if not result:
+                return False
+                
+            current_datetime = result[0]
+            
+            # Сохраняем время, меняем только дату
+            new_datetime = new_date.replace(
+                hour=current_datetime.hour,
+                minute=current_datetime.minute
+            )
+            
+            cursor.execute('UPDATE games SET game_date = %s WHERE id = %s', (new_datetime, game_id))
+            self.conn.commit()
+            cursor.close()
+            return cursor.rowcount > 0
+        except Exception as e:
+            logging.error(f"❌ Ошибка обновления даты: {e}")
+            return False
+
+    def update_game_location(self, game_id, new_location):
+        """Обновление адреса игры"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute('UPDATE games SET location = %s WHERE id = %s', (new_location, game_id))
+            self.conn.commit()
+            cursor.close()
+            return cursor.rowcount > 0
+        except Exception as e:
+            logging.error(f"❌ Ошибка обновления адреса: {e}")
+            return False
+
+    def update_game_max_players(self, game_id, new_max_players):
+        """Обновление максимального количества игроков"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute('UPDATE games SET max_players = %s WHERE id = %s', (new_max_players, game_id))
+            self.conn.commit()
+            cursor.close()
+            return cursor.rowcount > 0
+        except Exception as e:
+            logging.error(f"❌ Ошибка обновления лимита игроков: {e}")
+            return False
+
+    def update_game_buy_in(self, game_id, new_buy_in):
+        """Обновление стоимости участия"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute('UPDATE games SET buy_in = %s WHERE id = %s', (new_buy_in, game_id))
+            self.conn.commit()
+            cursor.close()
+            return cursor.rowcount > 0
+        except Exception as e:
+            logging.error(f"❌ Ошибка обновления стоимости: {e}")
+            return False
+
+    def update_game_name(self, game_id, new_name):
+        """Обновление названия игры"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute('UPDATE games SET game_name = %s WHERE id = %s', (new_name, game_id))
+            self.conn.commit()
+            cursor.close()
+            return cursor.rowcount > 0
+        except Exception as e:
+            logging.error(f"❌ Ошибка обновления названия: {e}")
+            return False
+
+    def get_game_registrations_by_game(self, game_id):
+        """Получение user_id записавшихся на конкретную игру"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                SELECT user_id FROM game_registrations 
+                WHERE game_id = %s AND user_id IS NOT NULL
+            ''', (game_id,))
+            user_ids = [row[0] for row in cursor.fetchall()]
+            cursor.close()
+            return user_ids
+        except Exception as e:
+            logging.error(f"❌ Ошибка получения user_id для игры: {e}")
+            return []
+
+    def get_user_registrations(self, user_id):
+        """Получение всех записей пользователя на игры"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                SELECT gr.game_id, g.game_name, g.game_date, g.location, gr.player_name
+                FROM game_registrations gr
+                JOIN games g ON gr.game_id = g.id
+                WHERE gr.user_id = %s AND gr.status = 'registered' AND g.status = 'upcoming'
+                ORDER BY g.game_date
+            ''', (user_id,))
+            registrations = cursor.fetchall()
+            cursor.close()
+            return registrations
+        except Exception as e:
+            logging.error(f"❌ Ошибка получения записей пользователя: {e}")
+            return []
+
+    def register_player_for_game(self, game_id, player_name, user_id):
+        """Запись игрока на игру"""
+        try:
+            # Проверяем есть ли место на игре
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                SELECT COUNT(*) FROM game_registrations 
+                WHERE game_id = %s AND status = 'registered'
+            ''', (game_id,))
+            current_players = cursor.fetchone()[0]
+            
+            cursor.execute('SELECT max_players FROM games WHERE id = %s', (game_id,))
+            result = cursor.fetchone()
+            if not result:
+                cursor.close()
+                return False, "❌ Игра не найдена"
+                
+            max_players = result[0]
+            
+            if current_players >= max_players:
+                cursor.close()
+                return False, "❌ На эту игру уже набрано максимальное количество игроков"
+            
+            # Записываем игрока
+            cursor.execute('''
+                INSERT INTO game_registrations (game_id, player_name, user_id)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (game_id, player_name) DO UPDATE SET status = 'registered'
+            ''', (game_id, player_name, user_id))
+            
+            self.conn.commit()
+            cursor.close()
+            return True, "Вы успешно записаны на игру!"
+        except Exception as e:
+            logging.error(f"❌ Ошибка записи на игру: {e}")
+            return False, "❌ Ошибка при записи на игру"
+
+    def remove_player_from_game(self, game_id, player_name):
+        """Удаление игрока из игры"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                DELETE FROM game_registrations 
+                WHERE game_id = %s AND player_name = %s
+            ''', (game_id, player_name))
+            self.conn.commit()
+            cursor.close()
+            return cursor.rowcount > 0
+        except Exception as e:
+            logging.error(f"❌ Ошибка удаления игрока из игры: {e}")
+            return False
+
+    def create_game(self, game_name, game_date, max_players, game_type, buy_in, location, host=None, end_time=None, created_by=None):
+        """Создание новой игры"""
+        try:
+            logging.info(f"🔄 Создание игры: {game_name}, {game_date}, {max_players}, {buy_in}, {location}, {host}, {end_time}")
+            
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                INSERT INTO games (game_name, game_date, max_players, game_type, buy_in, location, host, end_time, created_by)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
+            ''', (game_name, game_date, max_players, game_type, buy_in, location, host, end_time, created_by))
+            game_id = cursor.fetchone()[0]
+            self.conn.commit()
+            cursor.close()
+            
+            logging.info(f"✅ Игра создана с ID: {game_id}")
+            return game_id
+        except Exception as e:
+            logging.error(f"❌ Ошибка создания игры: {e}")
+            return None
+
+    def get_upcoming_games(self):
+        """Получение предстоящих игр"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                SELECT id, game_name, game_date, game_type, max_players, buy_in, location, status, host, end_time
+                FROM games 
+                WHERE status = 'upcoming'
+                ORDER BY game_date
+            ''')
+            games = cursor.fetchall()
+            cursor.close()
+            return games
+        except Exception as e:
+            logging.error(f"❌ Ошибка получения игр: {e}")
+            return []
+
+    def get_game_by_id(self, game_id):
+        """Получение информации об игре по ID"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                SELECT id, game_name, game_date, game_type, max_players, buy_in, location, status, host, end_time
+                FROM games WHERE id = %s
+            ''', (game_id,))
+            game = cursor.fetchone()
+            cursor.close()
+            return game
+        except Exception as e:
+            logging.error(f"❌ Ошибка получения игры: {e}")
+            return None
+
+    def get_game_registrations(self, game_id):
+        """Получение списка записавшихся на игру"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                SELECT r.player_name, r.status, p.rating, r.user_id
+                FROM game_registrations r
+                LEFT JOIN players p ON r.player_name = p.name
+                WHERE r.game_id = %s
+                ORDER BY r.registered_at
+            ''', (game_id,))
+            registrations = cursor.fetchall()
+            cursor.close()
+            return registrations
+        except Exception as e:
+            logging.error(f"❌ Ошибка получения записей: {e}")
+            return []
+    
     # ★★★ МЕТОДЫ ДЛЯ ИГРОКОВ ★★★
     def add_player(self, name, rating):
         """Добавление игрока"""
