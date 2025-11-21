@@ -206,10 +206,10 @@ def get_games_selection_keyboard(games, action="select"):
         registrations = db.get_game_registrations(game_id)
         current_players = len([r for r in registrations if r[1] == 'registered'])
         
-        # ★★★ МНОГОСТРОЧНЫЙ ФОРМАТ С ЭМОДЗИ ★★★
-        button_text = f"""🎮 {game_name}
-📅 {game_date.strftime('%d.%m %H:%M')}-{end_time}
-👥 {current_players}/{max_players} игроков"""
+        # ★★★ УНИКАЛЬНЫЕ СОКРАЩЕНИЯ ★★★
+        short_name = get_unique_short_name(game_name)
+        
+        button_text = f"{short_name} | {game_date.strftime('%d.%m %H:%M')}-{end_time} | {current_players}/{max_players}"
         
         keyboard.add(InlineKeyboardButton(
             text=button_text,
@@ -217,6 +217,19 @@ def get_games_selection_keyboard(games, action="select"):
         ))
     keyboard.adjust(1)
     return keyboard.as_markup()
+
+def get_unique_short_name(full_name):
+    """Уникальные сокращения для наших игр"""
+    if "MagnumPokerLeague" in full_name:
+        return "Poker"
+    elif "Мафия-картель" in full_name:
+        return "Картель" 
+    elif "Городская мафия" in full_name:
+        return "Город"
+    elif "Мафия" in full_name and "картель" not in full_name:
+        return "Мафия"
+    else:
+        return full_name[:8] + "…"  # fallback
 
 # Обновленная функция для клавиатуры отмены записи
 def get_cancel_registration_keyboard(registrations):
@@ -583,49 +596,8 @@ async def register_game_handler(message: Message, state: FSMContext):
     
     await message.answer(
         "🎮 Выберите игру для записи:",
-        reply_markup=get_games_selection_reply_keyboard(games)
+        reply_markup=get_games_selection_keyboard(games, "register")
     )
-    await state.set_state(UserStates.user_select_game)
-
-@dp.message(UserStates.user_select_game)
-async def process_game_selection_reply(message: Message, state: FSMContext):
-    try:
-        # Ищем игру по тексту кнопки
-        button_text = message.text
-        games = db.get_upcoming_games()
-        
-        selected_game = None
-        for game in games:
-            game_id, game_name, game_date, game_type, max_players, buy_in, location, status, host, end_time = game
-            expected_text = f"""🎮 {game_name}
-📅 {game_date.strftime('%d.%m %H:%M')}-{end_time}
-👥 {len(db.get_game_registrations(game_id))}/{max_players} игроков"""
-            
-            if button_text == expected_text:
-                selected_game = game
-                break
-        
-        if not selected_game:
-            if button_text == "🚫 Отменить действие":
-                await message.answer("✅ Действие отменено", reply_markup=get_games_keyboard())
-                await state.clear()
-                return
-            await message.answer("❌ Игра не найдена")
-            return
-        
-        game_id = selected_game[0]
-        await state.update_data(game_id=game_id)
-        
-        await message.answer(
-            f"👤 Введите ваш игровой никнейм для записи:",
-            reply_markup=get_cancel_action_keyboard()
-        )
-        await state.set_state(UserStates.user_register_for_game)
-        
-    except Exception as e:
-        logging.error(f"❌ Ошибка выбора игры: {e}")
-        await message.answer("❌ Ошибка выбора игры", reply_markup=get_games_keyboard())
-        await state.clear()
 
 @dp.callback_query(F.data.startswith("register_"))
 async def process_game_selection(callback: types.CallbackQuery, state: FSMContext):
@@ -651,29 +623,28 @@ async def process_game_selection(callback: types.CallbackQuery, state: FSMContex
         
         await state.update_data(game_id=game_id)
         
+        # ★★★ ПОКАЗЫВАЕМ ПОЛНУЮ ИНФОРМАЦИЮ ОБ ИГРЕ ★★★
+        game_info = f"""🎮 Запись на игру:
+
+🎯 {game[1]}
+📅 {get_russian_weekday(game[2])} {game[2].strftime('%d.%m')}
+📍 {game[6]}
+🕢 {game[2].strftime('%H:%M')}-{game[9]}
+💸 {int(game[5])} рублей
+🎤 Ведущий: {game[8] or 'Капоне'}
+👥 Свободно мест: {max_players - current_players}/{max_players}
+
+👤 Введите ваш игровой никнейм для записи:"""
+        
         await callback.message.answer(
-            f"🎮 Запись на игру:\n\n"
-            f"🌃 {get_russian_weekday(game[2])} {game[2].strftime('%d.%m')}\n"
-            f"{game[1]} 🃏\n"
-            f"{game[6]}\n"
-            f"🕢 {game[2].strftime('%H:%M')}-{game[9]}\n"
-            f"💸 {int(game[5])} рублей\n"
-            f"🎤 Ведущий: {game[8] or 'Капоне'}\n"
-            f"👥 Свободно мест: {max_players - current_players}/{max_players}\n\n"
-            f"👤 Введите ваш игровой никнейм для записи:\n\n"
-            f"⚠️ Или нажмите '🚫 Отменить действие' чтобы вернуться назад",
-            reply_markup=get_cancel_action_keyboard()  # ★★★ НОВАЯ КНОПКА ★★★
+            game_info,
+            reply_markup=get_cancel_action_keyboard()
         )
         await state.set_state(UserStates.user_register_for_game)
         await callback.answer()
         
     except (ValueError, IndexError):
         await callback.message.answer("❌ Ошибка выбора игры")
-# Обнови обработчик состояния записи на игру
-# Добавь эту функцию в раздел с другими функциями (после normalize_name)
-def normalize_name_for_comparison(name):
-    """Нормализация имени для сравнения: заменяет ё на е, нижний регистр, убирает пробелы"""
-    return name.lower().replace('ё', 'е').strip()
 
 @dp.message(UserStates.user_register_for_game)
 async def process_game_registration_name(message: Message, state: FSMContext):
@@ -694,7 +665,7 @@ async def process_game_registration_name(message: Message, state: FSMContext):
             await message.answer(
                 "❌ Нельзя использовать команды бота в качестве ника!\n\n"
                 "👤 Пожалуйста, введите ваш обычный игровой никнейм:",
-                reply_markup=get_cancel_action_keyboard()  # ★★★ СОХРАНЯЕМ КНОПКУ ОТМЕНЫ ★★★
+                reply_markup=get_cancel_action_keyboard()
             )
             return
         
@@ -703,7 +674,7 @@ async def process_game_registration_name(message: Message, state: FSMContext):
             await message.answer(
                 "❌ Слишком короткий ник! Минимум 2 символа.\n\n"
                 "👤 Пожалуйста, введите ваш игровой никнейм:",
-                reply_markup=get_cancel_action_keyboard()  # ★★★ СОХРАНЯЕМ КНОПКУ ОТМЕНЫ ★★★
+                reply_markup=get_cancel_action_keyboard()
             )
             return
 
@@ -711,7 +682,7 @@ async def process_game_registration_name(message: Message, state: FSMContext):
             await message.answer(
                 "❌ Слишком длинный ник! Максимум 30 символов.\n\n"
                 "👤 Пожалуйста, введите ваш игровой никнейм:",
-                reply_markup=get_cancel_action_keyboard()  # ★★★ СОХРАНЯЕМ КНОПКУ ОТМЕНЫ ★★★
+                reply_markup=get_cancel_action_keyboard()
             )
             return
         
@@ -723,14 +694,12 @@ async def process_game_registration_name(message: Message, state: FSMContext):
             await state.clear()
             return
         
-        # ★★★ ОБНОВЛЕННАЯ ПРОВЕРКА: Уже есть ли такой ник на этой игре (с учетом регистра) ★★★
+        # ★★★ ПРОВЕРКА: Уже есть ли такой ник на этой игре (с учетом регистра) ★★★
         registrations = db.get_game_registrations(game_id)
         existing_players = [name for name, status, rating, user_id in registrations]
         
-        # Нормализуем введенное имя для сравнения
         normalized_input_name = normalize_name_for_comparison(player_name)
         
-        # Проверяем на дубликаты с учетом регистра
         duplicate_found = False
         existing_duplicate_name = None
         
@@ -744,11 +713,11 @@ async def process_game_registration_name(message: Message, state: FSMContext):
             await message.answer(
                 f"❌ Игрок с ником '{existing_duplicate_name}' уже записан на эту игру.\n\n"
                 f"Пожалуйста, выберите другой никнейм для записи:",
-                reply_markup=get_cancel_action_keyboard()  # ★★★ СОХРАНЯЕМ КНОПКУ ОТМЕНЫ ★★★
+                reply_markup=get_cancel_action_keyboard()
             )
             return
         
-        # Записываем игрока на игру (любого, без проверки в базе)
+        # Записываем игрока на игру
         success, result_message = db.register_player_for_game(
             game_id, player_name, message.from_user.id
         )
