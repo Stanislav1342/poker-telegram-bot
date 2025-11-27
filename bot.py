@@ -1928,17 +1928,13 @@ async def process_add_player(message: Message, state: FSMContext):
     try:
         parts = message.text.split()
         if len(parts) < 2:
-            await message.answer("❌ Неверный формат. Пример: Иван Рунге 4.4")
+            await message.answer("❌ Неверный формат. Пример: Иван Рунге 50")
             return
         
         rating_str = parts[-1].replace(',', '.')
         player_name = ' '.join(parts[:-1])
         
         rating = float(rating_str)
-        
-        if rating < 0 or rating > 5:
-            await message.answer("❌ Рейтинг должен быть от 0 до 5")
-            return
         
         if db.add_player(player_name, rating):
             players_rating[player_name] = rating
@@ -1950,7 +1946,7 @@ async def process_add_player(message: Message, state: FSMContext):
             await message.answer("❌ Ошибка при добавлении игрока в базу")
         
     except ValueError:
-        await message.answer("❌ Рейтинг должен быть числом. Пример: Иван Рунге 4.4")
+        await message.answer("❌ Рейтинг должен быть числом. Пример: Иван Рунге 50")
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}")
     
@@ -1970,8 +1966,8 @@ async def update_rating_handler(message: Message, state: FSMContext):
         f"📋 Список игроков:\n{players_list}\n\n"
         "Введите данные в формате:\n"
         "Имя Новый_рейтинг\n\n"
-        "Пример: Иван Рунге 4.7\n"
-        "Или: Стас 4.2"
+        "Пример: Иван Рунге 50\n"
+        "Или: Стас 60"
     )
     await state.set_state(UserStates.admin_update_rating)
 
@@ -1980,7 +1976,7 @@ async def process_update_rating(message: Message, state: FSMContext):
     try:
         parts = message.text.split()
         if len(parts) < 2:
-            await message.answer("❌ Неверный формат. Пример: Иван Рунге 4.7")
+            await message.answer("❌ Неверный формат. Пример: Иван Рунге 50")
             return
         
         rating_str = parts[-1].replace(',', '.')
@@ -1998,10 +1994,6 @@ async def process_update_rating(message: Message, state: FSMContext):
         
         rating = float(rating_str)
         
-        if rating < 0 or rating > 5:
-            await message.answer("❌ Рейтинг должен быть от 0 до 5")
-            return
-        
         if db.update_player_rating(found_player, rating):
             players_rating[found_player] = rating
             await message.answer(
@@ -2012,7 +2004,7 @@ async def process_update_rating(message: Message, state: FSMContext):
             await message.answer("❌ Ошибка при обновлении рейтинга")
         
     except ValueError:
-        await message.answer("❌ Рейтинг должен быть числом. Пример: Иван Рунге 4.7")
+        await message.answer("❌ Рейтинг должен быть числом. Пример: Иван Рунге 50")
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}")
     
