@@ -23,9 +23,9 @@ dp = Dispatcher()
 processed_starts = {}
 
 BOT_COMMANDS = [
-    "🏆 Рейтинг покер", "🔫 Рейтинг мафия", "📚 Правила покера", "📜 Правила мафии", "🧠 Тест по покеру", "🎮 Игры",
+    "🏆 Рейтинг покер", "🔫 Рейтинг мафия", "📚 Правила покера", "📜 Правила мафии", "🎮 Игры",
     "📅 Предстоящие игры", "🎮 Записаться на игру", "❌ Отменить запись", "👥 Мои записи", "📋 Списки игроков",
-    "🔙 Главное меню", "👑 Админ-панель", "➕ Добавить игрока", "✏️ Изменить рейтинг", "🗑 Удалить игрока",
+    "🔙 Главное меню", "👑 Админ-панель", "➕ Добавить игрока", "🗑 Удалить игрока",
     "🏆 Управление рейтингами", "🎮 Управление играми", "🗑 Удалить все игры", "📋 Списки всех игроков",
     "📢 Рассылка", "📊 Статистика БД", "➕ Создать игру", "📋 Редактировать игры", "🔙 Админ-панель",
     "🔙 Назад к играм", "/start"
@@ -33,98 +33,42 @@ BOT_COMMANDS = [
 
 # Состояния для FSM
 class UserStates(StatesGroup):
-    waiting_for_player_name = State()
+    # состояния для игроков
     admin_add_player = State()
     admin_remove_player = State()
-    admin_update_rating = State()
-    poker_test = State()
+    
+    # состояния для редактирования игр
     admin_update_game_host = State()
     admin_update_game_time = State()
     admin_update_game_date = State()
     admin_update_game_location = State()
-    
-    # состояния для игр
-    admin_create_game_name = State()
-    admin_create_game_date = State()
-    admin_create_game_players = State()
-    admin_create_game_location = State()
-    admin_create_game_price = State()
-    admin_create_game_host = State()
-    admin_create_game_name = State()
-    admin_create_game_date = State()
-    admin_create_game_players = State()
-    admin_create_game_location = State()
-    admin_create_game_price = State()
-    admin_create_game_host = State()
-    admin_broadcast_photo = State()
-    admin_remove_player_from_game = State()
     admin_update_game_limit = State()
+    admin_remove_player_from_game = State()
     
+    # состояния для создания игры
+    admin_create_game_name = State()
+    admin_create_game_date = State()
+    admin_create_game_players = State()
+    admin_create_game_location = State()
+    admin_create_game_price = State()
+    admin_create_game_host = State()
+    admin_add_game_poster = State()
+    
+    # состояния для рассылки
     admin_broadcast_message = State()
     
+    # состояние для записи пользователя
     user_register_for_game = State()
-    user_select_game = State()
-    user_cancel_registration = State()
-
-       # состояния для рейтингов
+    
+    # состояния для рейтингов
     admin_add_poker_rating = State()
     admin_remove_poker_rating = State()
     admin_add_mafia_city_rating = State()
     admin_add_mafia_cartel_rating = State()
     admin_remove_mafia_rating = State()
-    
-    # состояние для афиши игры
-    admin_add_game_poster = State()
 
 # Загружаем данные из базы при запуске
 players_rating = db.get_all_players()
-
-# Данные для теста по покеру
-poker_test_questions = [
-    {
-        "question": "Какая комбинация СТАРШЕ?",
-        "options": ["Флеш", "Стрит", "Фулл-хаус", "Каре"],
-        "correct": 3,
-        "explanation": "Каре > Фулл-хаус > Флеш > Стрит"
-    },
-    {
-        "question": "Сколько карт в комбинации 'Каре'?",
-        "options": ["3 карты", "4 карты", "5 карт", "6 карт"],
-        "correct": 1,
-        "explanation": "Каре - это 4 карты одного достоинства"
-    },
-    {
-        "question": "Что такое 'Флеш'?",
-        "options": [
-            "5 карт по порядку", 
-            "5 карт одной масти", 
-            "3 карты одного достоинства", 
-            "2 пары"
-        ],
-        "correct": 1,
-        "explanation": "Флеш - 5 карт одной масти"
-    },
-    {
-        "question": "Какая комбинация САМАЯ СТАРШАЯ?",
-        "options": ["Флеш-рояль", "Стрит-флеш", "Каре", "Фулл-хаус"],
-        "correct": 0,
-        "explanation": "Флеш-рояль - самая старшая комбинация"
-    },
-    {
-        "question": "Что такое 'Стрит'?",
-        "options": [
-            "5 карт разной масти", 
-            "5 карт по порядку", 
-            "4 карты одного достоинства", 
-            "2 карты одного достоинства"
-        ],
-        "correct": 1,
-        "explanation": "Стрит - 5 карт по порядку любой масти"
-    }
-]
-
-# Переменные для теста
-user_test_data = {}
 
 # Функция для нормализации имен (е/ё)
 def normalize_name(name):
@@ -162,20 +106,17 @@ def get_main_keyboard(user_id):
     keyboard.add(KeyboardButton(text="🔫 Рейтинг мафия"))
     keyboard.add(KeyboardButton(text="📚 Правила покера"))
     keyboard.add(KeyboardButton(text="📜 Правила мафии"))
-    keyboard.add(KeyboardButton(text="🧠 Тест по покеру"))
     keyboard.add(KeyboardButton(text="🎮 Игры"))
     
     if is_admin(user_id):
         keyboard.add(KeyboardButton(text="👑 Админ-панель"))
     
-    keyboard.adjust(2, 2, 2)
+    keyboard.adjust(2, 2, 1)
     return keyboard.as_markup(resize_keyboard=True)
-
 # Админ клавиатура
 def get_admin_keyboard():
     keyboard = ReplyKeyboardBuilder()
     keyboard.add(KeyboardButton(text="➕ Добавить игрока"))
-    keyboard.add(KeyboardButton(text="✏️ Изменить рейтинг"))
     keyboard.add(KeyboardButton(text="🗑 Удалить игрока"))
     keyboard.add(KeyboardButton(text="🏆 Управление рейтингами"))
     keyboard.add(KeyboardButton(text="🎮 Управление играми"))
@@ -350,16 +291,6 @@ async def process_cancel_registration(callback: types.CallbackQuery):
     except (ValueError, IndexError):
         await callback.message.answer("❌ Ошибка при отмене записи")
 
-# Клавиатура для теста
-def get_test_keyboard(question_index):
-    keyboard = ReplyKeyboardBuilder()
-    question = poker_test_questions[question_index]
-    for i, option in enumerate(question["options"]):
-        keyboard.add(KeyboardButton(text=f"{i+1}. {option}"))
-    keyboard.add(KeyboardButton(text="❌ Отменить тест"))
-    keyboard.adjust(1)
-    return keyboard.as_markup(resize_keyboard=True)
-
 # ========== ОСНОВНЫЕ КОМАНДЫ ==========
 
 @dp.message(Command("start"))
@@ -386,19 +317,6 @@ async def start_handler(message: Message, command: CommandObject):
     
     welcome_text = "♥️♣️ Добро пожаловать в MagnumPoker ♦️♠️\n\nВыберите действие:"
     await message.answer(welcome_text, reply_markup=get_main_keyboard(message.from_user.id))
-
-@dp.message(F.text == "🏆 Общий рейтинг")
-async def full_rating_handler(message: Message):
-    if not players_rating:
-        await message.answer("📋 В базе пока нет игроков")
-        return
-    
-    rating_text = "🏆 Общий рейтинг игроков:\n\n"
-    sorted_players = sorted(players_rating.items(), key=lambda x: x[1], reverse=True)
-    for i, (name, points) in enumerate(sorted_players, 1):
-        rating_text += f"{i}. {name}: {points}\n"
-    
-    await message.answer(rating_text, reply_markup=get_main_keyboard(message.from_user.id))
 
 @dp.message(F.text == "📚 Правила покера")
 async def rules_handler(message: Message):
@@ -493,7 +411,7 @@ async def poker_rating_handler(message: Message):
                 file_id,
                 caption=f"👤 {player_name}"
             )
-            await asyncio.sleep(0.5)  # Чтобы не спамить
+            await asyncio.sleep(0.1)  # Чтобы не спамить
         except Exception as e:
             logging.error(f"❌ Ошибка отправки рейтинга покера для {player_name}: {e}")
 
@@ -543,90 +461,6 @@ async def mafia_cartel_rating_handler(message: Message):
             await asyncio.sleep(0.5)
         except Exception as e:
             logging.error(f"❌ Ошибка отправки рейтинга Мафии Картель для {player_name}: {e}")
-
-@dp.message(F.text == "🧠 Тест по покеру")
-async def poker_test_handler(message: Message, state: FSMContext):
-    user_test_data[message.from_user.id] = {
-        "current_question": 0,
-        "score": 0,
-        "answers": []
-    }
-    await send_question(message, state)
-
-async def send_question(message: Message, state: FSMContext):
-    user_id = message.from_user.id
-    current_question = user_test_data[user_id]["current_question"]
-    
-    if current_question >= len(poker_test_questions):
-        await finish_test(message, state)
-        return
-    
-    question = poker_test_questions[current_question]
-    question_text = f"❓ Вопрос {current_question + 1}/{len(poker_test_questions)}:\n\n{question['question']}"
-    
-    await message.answer(question_text, reply_markup=get_test_keyboard(current_question))
-    await state.set_state(UserStates.poker_test)
-
-@dp.message(UserStates.poker_test)
-async def process_test_answer(message: Message, state: FSMContext):
-    user_id = message.from_user.id
-    
-    if message.text == "❌ Отменить тест":
-        await message.answer("Тест отменен", reply_markup=get_main_keyboard(user_id))
-        await state.clear()
-        return
-    
-    try:
-        answer_text = message.text.strip()
-        answer_num = int(answer_text.split('.')[0]) - 1
-        
-        current_question = user_test_data[user_id]["current_question"]
-        question = poker_test_questions[current_question]
-        
-        if answer_num < 0 or answer_num >= len(question["options"]):
-            await message.answer(f"❌ Пожалуйста, выберите вариант от 1 до {len(question['options'])}")
-            return
-        
-        is_correct = (answer_num == question["correct"])
-        
-        if is_correct:
-            user_test_data[user_id]["score"] += 1
-        
-        user_test_data[user_id]["answers"].append(is_correct)
-        
-        if is_correct:
-            await message.answer(f"✅ {question['explanation']}")
-        else:
-            correct_option = question["options"][question["correct"]]
-            await message.answer(f"❌ Неправильно. {question['explanation']}\n\nПравильный ответ: {correct_option}")
-        
-        user_test_data[user_id]["current_question"] += 1
-        await asyncio.sleep(2)
-        await send_question(message, state)
-        
-    except (ValueError, IndexError):
-        await message.answer("❌ Пожалуйста, выберите вариант ответа (1, 2, 3 или 4) нажав на кнопку")
-
-async def finish_test(message: Message, state: FSMContext):
-    user_id = message.from_user.id
-    score = user_test_data[user_id]["score"]
-    total = len(poker_test_questions)
-    
-    result_text = (
-        f"🎉 Тест завершен!\n\n"
-        f"📊 Ваш результат: {score}/{total}\n"
-        f"📈 Процент правильных ответов: {score/total*100:.1f}%\n\n"
-    )
-    
-    if score == total:
-        result_text += "🏆 Отлично! Вы отлично знаете правила покера!"
-    elif score >= total * 0.7:
-        result_text += "👍 Хорошо! Вы хорошо разбираетесь в покере!"
-    else:
-        result_text += "📚 Есть куда расти! Повторите правила покера."
-    
-    await message.answer(result_text, reply_markup=get_main_keyboard(user_id))
-    await state.clear()
 
 @dp.message(F.text == "🎮 Игры")
 async def games_handler(message: Message):
@@ -1018,15 +852,6 @@ async def admin_games_handler(message: Message):
         reply_markup=get_admin_games_keyboard()
     )
 
-# Убедись что эта функция существует и возвращает правильную клавиатуру
-def get_admin_games_keyboard():
-    keyboard = ReplyKeyboardBuilder()
-    keyboard.add(KeyboardButton(text="➕ Создать игру"))
-    keyboard.add(KeyboardButton(text="📋 Редактировать игры"))
-    keyboard.add(KeyboardButton(text="🔙 Админ-панель"))
-    keyboard.adjust(2)
-    return keyboard.as_markup(resize_keyboard=True)
-
 def get_skip_poster_keyboard():
     """Клавиатура для пропуска афиши"""
     keyboard = ReplyKeyboardBuilder()
@@ -1323,50 +1148,6 @@ async def process_game_poster(message: Message, state: FSMContext):
         )
     
     await state.clear()
-
-@dp.message(F.text == "📋 Редактировать игр")
-async def edit_games_handler(message: Message):
-    if not is_admin(message.from_user.id):
-        return
-    
-    games = db.get_upcoming_games()
-    
-    if not games:
-        await message.answer("🎉 Нет активных игр для редактирования")
-        return
-    
-    games_text = "🎯 АКТИВНЫЕ ИГРЫ ДЛЯ РЕДАКТИРОВАНИЯ:\n\n"
-    for game in games:
-        game_id, game_name, game_date, game_type, max_players, buy_in, location, status, host, end_time = game
-        registrations = db.get_game_registrations(game_id)
-        current_players = len([r for r in registrations if r[1] == 'registered'])
-        
-        games_text += f"🎮 {game_name}\n"
-        games_text += f"📅 {game_date.strftime('%d.%m.%Y %H:%M')}\n"
-        games_text += f"📍 {location}\n" 
-        games_text += f"👥 {current_players}/{max_players} игроков\n"
-        games_text += f"💸 {int(buy_in)} руб.\n\n"
-    
-    keyboard = InlineKeyboardBuilder()
-    for game in games:
-        game_id, game_name, game_date, game_type, max_players, buy_in, location, status, host, end_time = game
-        registrations = db.get_game_registrations(game_id)
-        current_players = len([r for r in registrations if r[1] == 'registered'])
-        
-        short_name = get_unique_short_name(game_name)
-        
-        button_text = f"{short_name} | {game_date.strftime('%d.%m %H:%M')}-{end_time} | {current_players}/{max_players}"
-        
-        keyboard.add(InlineKeyboardButton(
-            text=button_text,
-            callback_data=f"manage_{game_id}"
-        ))
-    keyboard.adjust(1)
-    
-    await message.answer(
-        games_text + "🛠️ Выберите игру для управления:",
-        reply_markup=keyboard.as_markup()
-    )
 
 @dp.callback_query(F.data.startswith("manage_"))
 async def manage_game_handler(callback: types.CallbackQuery):
@@ -2069,64 +1850,6 @@ async def process_add_player(message: Message, state: FSMContext):
     
     await state.clear()
 
-@dp.message(F.text == "✏️ Изменить рейтинг")
-async def update_rating_handler(message: Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
-    
-    if not players_rating:
-        await message.answer("❌ В базе нет игроков для редактирования")
-        return
-    
-    players_list = "\n".join([f"• {name}" for name in players_rating.keys()])
-    await message.answer(
-        f"📋 Список игроков:\n{players_list}\n\n"
-        "Введите данные в формате:\n"
-        "Имя Новый_рейтинг\n\n"
-        "Пример: Иван Рунге 50\n"
-        "Или: Стас 60"
-    )
-    await state.set_state(UserStates.admin_update_rating)
-
-@dp.message(UserStates.admin_update_rating)
-async def process_update_rating(message: Message, state: FSMContext):
-    try:
-        parts = message.text.split()
-        if len(parts) < 2:
-            await message.answer("❌ Неверный формат. Пример: Иван Рунге 50")
-            return
-        
-        rating_str = parts[-1].replace(',', '.')
-        search_name = normalize_name(' '.join(parts[:-1]))
-        
-        found_player = None
-        for name in players_rating:
-            if normalize_name(name) == search_name:
-                found_player = name
-                break
-        
-        if not found_player:
-            await message.answer(f"❌ Игрок не найден")
-            return
-        
-        rating = float(rating_str)
-        
-        if db.update_player_rating(found_player, rating):
-            players_rating[found_player] = rating
-            await message.answer(
-                f"✅ Рейтинг обновлен:\n👤 {found_player}\n⭐️ Новый рейтинг: {rating}",
-                reply_markup=get_admin_keyboard()
-            )
-        else:
-            await message.answer("❌ Ошибка при обновлении рейтинга")
-        
-    except ValueError:
-        await message.answer("❌ Рейтинг должен быть числом. Пример: Иван Рунге 50")
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}")
-    
-    await state.clear()
-
 @dp.message(F.text == "🗑 Удалить игрока")
 async def remove_player_handler(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
@@ -2209,25 +1932,21 @@ async def db_check_handler(message: Message):
         return
     
     try:
-        global players_rating, player_photo_ids
+        global players_rating
         players_rating = db.get_all_players()
-        player_photo_ids = db.get_all_cards()
         
         total_players = len(players_rating)
-        total_cards = len(player_photo_ids)
         total_bot_users = len(db.get_all_bot_users())
         
         status_text = "🟢 БАЗА ДАННЫХ РАБОТАЕТ\n\n"
         status_text += f"📊 Статистика:\n"
         status_text += f"• Игроков в базе: {total_players}\n"
-        status_text += f"• Карточек в базе: {total_cards}\n"
         status_text += f"• Пользователей бота: {total_bot_users}\n"
         
         if players_rating:
             status_text += "\n📋 Топ игроков:\n"
             for i, (name, rating) in enumerate(list(players_rating.items())[:10], 1):
-                has_card = "🖼" if name in player_photo_ids else "❌"
-                status_text += f"{i}. {name}: {rating} {has_card}\n"
+                status_text += f"{i}. {name}: {rating}\n"
         
         await message.answer(status_text, reply_markup=get_admin_keyboard())
         
