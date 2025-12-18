@@ -23,10 +23,10 @@ dp = Dispatcher()
 processed_starts = {}
 
 BOT_COMMANDS = [
-    "🎯 Мой рейтинг", "🏆 Общий рейтинг", "📚 Правила покера", "🧠 Тест по покеру", "🎮 Игры",
+    "🏆 Рейтинг покер", "🔫 Рейтинг мафия", "📚 Правила покера", "📜 Правила мафии", "🧠 Тест по покеру", "🎮 Игры",
     "📅 Предстоящие игры", "🎮 Записаться на игру", "❌ Отменить запись", "👥 Мои записи", "📋 Списки игроков",
     "🔙 Главное меню", "👑 Админ-панель", "➕ Добавить игрока", "✏️ Изменить рейтинг", "🗑 Удалить игрока",
-    "📤 Загрузить карточку", "🎮 Управление играми", "🗑 Удалить все игры", "📋 Списки всех игроков",
+    "🏆 Управление рейтингами", "🎮 Управление играми", "🗑 Удалить все игры", "📋 Списки всех игроков",
     "📢 Рассылка", "📊 Статистика БД", "➕ Создать игру", "📋 Редактировать игры", "🔙 Админ-панель",
     "🔙 Назад к играм", "/start"
 ]
@@ -66,9 +66,18 @@ class UserStates(StatesGroup):
     user_select_game = State()
     user_cancel_registration = State()
 
+       # состояния для рейтингов
+    admin_add_poker_rating = State()
+    admin_remove_poker_rating = State()
+    admin_add_mafia_city_rating = State()
+    admin_add_mafia_cartel_rating = State()
+    admin_remove_mafia_rating = State()
+    
+    # состояние для афиши игры
+    admin_add_game_poster = State()
+
 # Загружаем данные из базы при запуске
 players_rating = db.get_all_players()
-player_photo_ids = db.get_all_cards()
 
 # Данные для теста по покеру
 poker_test_questions = [
@@ -149,16 +158,17 @@ def get_russian_weekday(date):
 # Клавиатура главного меню
 def get_main_keyboard(user_id):
     keyboard = ReplyKeyboardBuilder()
-    keyboard.add(KeyboardButton(text="🎯 Мой рейтинг"))
-    keyboard.add(KeyboardButton(text="🏆 Общий рейтинг"))
+    keyboard.add(KeyboardButton(text="🏆 Рейтинг покер"))
+    keyboard.add(KeyboardButton(text="🔫 Рейтинг мафия"))
     keyboard.add(KeyboardButton(text="📚 Правила покера"))
+    keyboard.add(KeyboardButton(text="📜 Правила мафии"))
     keyboard.add(KeyboardButton(text="🧠 Тест по покеру"))
     keyboard.add(KeyboardButton(text="🎮 Игры"))
     
     if is_admin(user_id):
         keyboard.add(KeyboardButton(text="👑 Админ-панель"))
     
-    keyboard.adjust(2, 2, 1)
+    keyboard.adjust(2, 2, 2)
     return keyboard.as_markup(resize_keyboard=True)
 
 # Админ клавиатура
@@ -167,7 +177,7 @@ def get_admin_keyboard():
     keyboard.add(KeyboardButton(text="➕ Добавить игрока"))
     keyboard.add(KeyboardButton(text="✏️ Изменить рейтинг"))
     keyboard.add(KeyboardButton(text="🗑 Удалить игрока"))
-    keyboard.add(KeyboardButton(text="📤 Загрузить карточку"))
+    keyboard.add(KeyboardButton(text="🏆 Управление рейтингами"))
     keyboard.add(KeyboardButton(text="🎮 Управление играми"))
     keyboard.add(KeyboardButton(text="🗑 Удалить все игры"))
     keyboard.add(KeyboardButton(text="📋 Списки всех игроков"))
@@ -272,6 +282,24 @@ def get_cancel_registration_keyboard(registrations):
     keyboard.adjust(1)
     return keyboard.as_markup()
 
+def get_mafia_rating_keyboard():
+    keyboard = ReplyKeyboardBuilder()
+    keyboard.add(KeyboardButton(text="🌆 Городская мафия"))
+    keyboard.add(KeyboardButton(text="🃏 Мафия Картель"))
+    keyboard.add(KeyboardButton(text="🔙 Главное меню"))
+    keyboard.adjust(2)
+    return keyboard.as_markup(resize_keyboard=True)
+
+def get_admin_ratings_keyboard():
+    keyboard = ReplyKeyboardBuilder()
+    keyboard.add(KeyboardButton(text="🏆 Добавить рейтинг покер"))
+    keyboard.add(KeyboardButton(text="🗑 Удалить рейтинг покер"))
+    keyboard.add(KeyboardButton(text="🔫 Добавить рейтинг мафия"))
+    keyboard.add(KeyboardButton(text="✂️ Удалить рейтинг мафия"))
+    keyboard.add(KeyboardButton(text="🔙 Админ-панель"))
+    keyboard.adjust(2)
+    return keyboard.as_markup(resize_keyboard=True)
+
 # Добавь эту функцию в раздел с другими клавиатурами
 def get_cancel_action_keyboard():
     """Клавиатура для отмены действия (процесса записи)"""
@@ -359,86 +387,6 @@ async def start_handler(message: Message, command: CommandObject):
     welcome_text = "♥️♣️ Добро пожаловать в MagnumPoker ♦️♠️\n\nВыберите действие:"
     await message.answer(welcome_text, reply_markup=get_main_keyboard(message.from_user.id))
 
-@dp.message(F.text == "🎯 Мой рейтинг")
-async def my_rating_handler(message: Message, state: FSMContext):
-    if not players_rating:
-        await message.answer("📋 В базе пока нет игроков")
-        return
-    
-    await message.answer("Введите ваше игровое имя:")
-    await state.set_state(UserStates.waiting_for_player_name)
-
-@dp.message(UserStates.waiting_for_player_name)
-async def process_player_name(message: Message, state: FSMContext):
-    try:
-        player_name = message.text.strip()
-        search_name = normalize_name(player_name)
-        
-        found_player = None
-        player_rating = None
-        
-        # Ищем игрока по частичному совпадению
-        for name, rating in players_rating.items():
-            if search_name in normalize_name(name):
-                found_player = name
-                player_rating = rating
-                break
-        
-        if not found_player:
-            await message.answer(
-                f"❌ Игрок '{player_name}' не найден в базе.",
-                reply_markup=get_main_keyboard(message.from_user.id)
-            )
-            await state.clear()
-            return
-        
-        position = get_player_position(found_player)
-        player_card = db.get_player_card(found_player)
-        
-        rating_text = (
-            f"👤 {found_player}\n"
-            f"⭐️ Рейтинг: {player_rating}\n"
-            f"🏆 Место в рейтинге: {position}\n"
-        )
-        
-        if player_card:
-            try:
-                await message.answer_photo(
-                    player_card,
-                    caption=rating_text,
-                    reply_markup=get_main_keyboard(message.from_user.id)
-                )
-            except Exception as e:
-                await message.answer(
-                    f"{rating_text}\n\n⚠️ Карточка временно недоступна",
-                    reply_markup=get_main_keyboard(message.from_user.id)
-                )
-        else:
-            await message.answer(
-                f"{rating_text}\n\nℹ️ Карточка игрока готовится",
-                reply_markup=get_main_keyboard(message.from_user.id)
-            )
-        
-        await state.clear()
-        
-    except Exception as e:
-        await message.answer("❌ Произошла ошибка при поиске игрока")
-        await state.clear()
-        
-    except Exception as e:
-        await message.answer("❌ Произошла ошибка при поиске игрока")
-        await state.clear()
-
-def get_player_position(player_name):
-    try:
-        sorted_players = sorted(players_rating.items(), key=lambda x: x[1], reverse=True)
-        for position, (name, _) in enumerate(sorted_players, 1):
-            if name == player_name:
-                return position
-        return None
-    except Exception:
-        return None
-
 @dp.message(F.text == "🏆 Общий рейтинг")
 async def full_rating_handler(message: Message):
     if not players_rating:
@@ -485,6 +433,116 @@ async def rules_handler(message: Message):
         )
     except Exception:
         await message.answer(rules_text, parse_mode="HTML", reply_markup=get_main_keyboard(message.from_user.id))
+
+@dp.message(F.text == "📜 Правила мафии")
+async def mafia_rules_handler(message: Message):
+    rules_text = """🎭 <b>Основные правила Мафии</b> 🎭
+
+<b>Цель игры:</b>
+• <b>Мафия:</b> уничтожить всех мирных жителей
+• <b>Мирные жители:</b> вычислить и казнить всех мафиози
+
+<b>Состав игры:</b>
+• 7-16 игроков
+• 25% мафии от общего числа игроков
+• Остальные - мирные жители (комиссар, доктор, мирные)
+
+<b>Ход игры:</b>
+1️⃣ <b>Ночь:</b> Мафия выбирает жертву, комиссар проверяет игрока
+2️⃣ <b>День:</b> Обсуждение и голосование
+3️⃣ <b>Казнь:</b> Игрок с наибольшим числом голосов выбывает
+4️⃣ <b>Раскрытие роли:</b> Ведущий объявляет роль казненного
+
+<b>Особые роли:</b>
+• <b>Комиссар:</b> Ночью может проверить игрока (мафия он или нет)
+• <b>Доктор:</b> Может спасти одного игрока от мафии ночью
+
+<b>Победа:</b>
+• Мафия побеждает, когда их число равно числу мирных жителей
+• Мирные побеждают, когда вся мафия вычислена и казнена
+
+🎮 <b>Приходи на игру чтобы почувствовать атмосферу!</b>
+"""
+    
+    try:
+        photo_url = "https://example.com/mafia_rules_image.jpg"  # Можете заменить на свою картинку
+        await message.answer_photo(
+            photo_url,
+            caption=rules_text,
+            parse_mode="HTML",
+            reply_markup=get_main_keyboard(message.from_user.id)
+        )
+    except Exception:
+        await message.answer(rules_text, parse_mode="HTML", reply_markup=get_main_keyboard(message.from_user.id))
+
+@dp.message(F.text == "🏆 Рейтинг покер")
+async def poker_rating_handler(message: Message):
+    poker_ratings = db.get_poker_ratings()
+    
+    if not poker_ratings:
+        await message.answer("🏆 Рейтинг покера пока пуст\nАдминистратор еще не добавил рейтинг", 
+                           reply_markup=get_main_keyboard(message.from_user.id))
+        return
+    
+    await message.answer("🏆 Рейтинг покера:", reply_markup=get_main_keyboard(message.from_user.id))
+    
+    # Отправляем все изображения рейтинга покера
+    for player_name, file_id in poker_ratings.items():
+        try:
+            await message.answer_photo(
+                file_id,
+                caption=f"👤 {player_name}"
+            )
+            await asyncio.sleep(0.5)  # Чтобы не спамить
+        except Exception as e:
+            logging.error(f"❌ Ошибка отправки рейтинга покера для {player_name}: {e}")
+
+@dp.message(F.text == "🔫 Рейтинг мафия")
+async def mafia_rating_handler(message: Message):
+    await message.answer("🔫 Выберите тип мафии для просмотра рейтинга:", 
+                       reply_markup=get_mafia_rating_keyboard())
+
+@dp.message(F.text == "🌆 Городская мафия")
+async def mafia_city_rating_handler(message: Message):
+    mafia_city_ratings = db.get_mafia_city_ratings()
+    
+    if not mafia_city_ratings:
+        await message.answer("🌆 Рейтинг Городской мафии пока пуст\nАдминистратор еще не добавил рейтинг", 
+                           reply_markup=get_main_keyboard(message.from_user.id))
+        return
+    
+    await message.answer("🌆 Рейтинг Городской мафии:", reply_markup=get_main_keyboard(message.from_user.id))
+    
+    for player_name, file_id in mafia_city_ratings.items():
+        try:
+            await message.answer_photo(
+                file_id,
+                caption=f"👤 {player_name}"
+            )
+            await asyncio.sleep(0.5)
+        except Exception as e:
+            logging.error(f"❌ Ошибка отправки рейтинга Городской мафии для {player_name}: {e}")
+
+@dp.message(F.text == "🃏 Мафия Картель")
+async def mafia_cartel_rating_handler(message: Message):
+    mafia_cartel_ratings = db.get_mafia_cartel_ratings()
+    
+    if not mafia_cartel_ratings:
+        await message.answer("🃏 Рейтинг Мафии Картель пока пуст\nАдминистратор еще не добавил рейтинг", 
+                           reply_markup=get_main_keyboard(message.from_user.id))
+        return
+    
+    await message.answer("🃏 Рейтинг Мафии Картель:", reply_markup=get_main_keyboard(message.from_user.id))
+    
+    for player_name, file_id in mafia_cartel_ratings.items():
+        try:
+            await message.answer_photo(
+                file_id,
+                caption=f"👤 {player_name}"
+            )
+            await asyncio.sleep(0.5)
+        except Exception as e:
+            logging.error(f"❌ Ошибка отправки рейтинга Мафии Картель для {player_name}: {e}")
 
 @dp.message(F.text == "🧠 Тест по покеру")
 async def poker_test_handler(message: Message, state: FSMContext):
@@ -597,6 +655,21 @@ async def upcoming_games_handler(message: Message):
         games_text += f"👥 Игроков: {current_players}/{max_players}\n\n"
     
     await message.answer(games_text)
+
+    # Отправляем афиши игр если они есть
+    for game in games:
+        game_id = game[0]
+        poster_file_id = db.get_game_poster(game_id)
+        
+        if poster_file_id:
+            try:
+                await message.answer_photo(
+                    poster_file_id,
+                    caption=f"🎨 Афиша: {game[1]}"
+                )
+                await asyncio.sleep(0.5)
+            except Exception as e:
+                logging.error(f"❌ Ошибка отправки афиши для игры {game_id}: {e}")
 
 def get_games_selection_reply_keyboard(games):
     """Reply-клавиатура для выбора игр с полной информацией"""
@@ -954,6 +1027,14 @@ def get_admin_games_keyboard():
     keyboard.adjust(2)
     return keyboard.as_markup(resize_keyboard=True)
 
+def get_skip_poster_keyboard():
+    """Клавиатура для пропуска афиши"""
+    keyboard = ReplyKeyboardBuilder()
+    keyboard.add(KeyboardButton(text="⏭ Пропустить"))
+    keyboard.add(KeyboardButton(text="❌ Отменить создание"))
+    keyboard.adjust(2)
+    return keyboard.as_markup(resize_keyboard=True)
+
 @dp.message(F.text == "📋 Редактировать игры")
 async def edit_games_handler(message: Message):
     if not is_admin(message.from_user.id):
@@ -1167,6 +1248,37 @@ async def process_game_host(message: Message, state: FSMContext):
         return
     
     host = message.text.strip()
+    await state.update_data(host=host)
+    
+    await message.answer(
+        "🎨 Добавление афиши игры:\n\n"
+        "Отправьте фото афиши для этой игры (необязательно)\n\n"
+        "Или нажмите 'Пропустить' чтобы продолжить без афиши",
+        reply_markup=get_skip_poster_keyboard()
+    )
+    await state.set_state(UserStates.admin_add_game_poster)
+
+@dp.message(UserStates.admin_add_game_poster)
+async def process_game_poster(message: Message, state: FSMContext):
+    if message.text == "❌ Отменить создание":
+        await message.answer("✅ Создание игры отменено", reply_markup=get_admin_games_keyboard())
+        await state.clear()
+        return
+    
+    poster_file_id = None
+    
+    if message.photo:
+        poster_file_id = message.photo[-1].file_id
+        poster_message = "✅ Афиша игры добавлена"
+    elif message.text == "⏭ Пропустить":
+        poster_message = "⏭ Афиша не добавлена"
+    else:
+        await message.answer(
+            "❌ Пожалуйста, отправьте фото афиши или нажмите 'Пропустить'",
+            reply_markup=get_skip_poster_keyboard()
+        )
+        return
+    
     data = await state.get_data()
     
     game_name = data.get('game_name')
@@ -1174,6 +1286,7 @@ async def process_game_host(message: Message, state: FSMContext):
     max_players = data.get('max_players')
     location = data.get('location')
     price = data.get('price')
+    host = data.get('host')
     end_time = data.get('end_time')
     
     game_id = db.create_game(
@@ -1189,8 +1302,12 @@ async def process_game_host(message: Message, state: FSMContext):
     )
     
     if game_id:
+        # Сохраняем афишу если есть
+        if poster_file_id:
+            db.update_game_poster(game_id, poster_file_id)
+        
         await message.answer(
-            f"✅ Игра успешно создана!\n\n"
+            f"✅ Игра успешно создана!\n{poster_message}\n\n"
             f"🎮 {game_name}\n"
             f"📅 {game_date.strftime('%d.%m')} {game_date.strftime('%H:%M')}-{end_time}\n"
             f"👥 Макс. игроков: {max_players}\n"
@@ -2049,53 +2166,6 @@ async def process_remove_player(message: Message, state: FSMContext):
     
     await state.clear()
 
-@dp.message(F.text == "📤 Загрузить карточку")
-async def upload_card_handler(message: Message):
-    if not is_admin(message.from_user.id):
-        return
-    
-    await message.answer(
-        "Отправьте карточку игрока как фото с подписью в формате:\n"
-        "Имя_игрока\n\n"
-        "Пример подписи к фото: Рунге"
-    )
-
-@dp.message(F.photo)
-async def process_photo_message(message: Message, state: FSMContext):
-    current_state = await state.get_state()
-    if current_state == UserStates.admin_broadcast_message.state:
-        data = await state.get_data()
-        if data.get('is_broadcast'):
-            await broadcast_content_handler(message, state)
-            return
-    
-    if not is_admin(message.from_user.id):
-        return
-    
-    if not message.caption:
-        await message.answer("❌ Добавьте подпись с именем игрока")
-        return
-    
-    player_name = message.caption.strip()
-    
-    if player_name not in players_rating:
-        await message.answer(
-            f"❌ Игрок '{player_name}' не найден в базе.\n"
-            f"Сначала добавьте игрока через '➕ Добавить игрока'.",
-            reply_markup=get_admin_keyboard()
-        )
-        return
-    
-    photo = message.photo[-1]
-    if db.save_player_card(player_name, photo.file_id):
-        player_photo_ids[player_name] = photo.file_id
-        await message.answer(
-            f"✅ Карточка для игрока '{player_name}' успешно загружена!",
-            reply_markup=get_admin_keyboard()
-        )
-    else:
-        await message.answer("❌ Ошибка при сохранении карточки в базу данных", reply_markup=get_admin_keyboard())
-
 @dp.message(F.text == "📋 Списки всех игроков")
 async def admin_all_players_handler(message: Message):
     if not is_admin(message.from_user.id):
@@ -2164,7 +2234,251 @@ async def db_check_handler(message: Message):
     except Exception as e:
         await message.answer(f"🔴 ОШИБКА БАЗЫ ДАННЫХ:\n{str(e)}")
 
+@dp.message(F.text == "🏆 Управление рейтингами")
+async def admin_ratings_handler(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    
+    await message.answer("🏆 Управление рейтингами:", reply_markup=get_admin_ratings_keyboard())
 
+@dp.message(F.text == "🏆 Добавить рейтинг покер")
+async def admin_add_poker_rating_handler(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    await message.answer(
+        "🏆 Добавление рейтинга покера:\n\n"
+        "Отправьте фото с подписью в формате:\n"
+        "Имя_игрока\n\n"
+        "Пример подписи: Иван Иванов"
+    )
+    await state.set_state(UserStates.admin_add_poker_rating)
+
+@dp.message(F.text == "🗑 Удалить рейтинг покер")
+async def admin_remove_poker_rating_handler(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    poker_ratings = db.get_poker_ratings()
+    
+    if not poker_ratings:
+        await message.answer("🏆 Нет рейтингов покера для удаления")
+        return
+    
+    players_list = "\n".join([f"• {name}" for name in poker_ratings.keys()])
+    await message.answer(
+        f"🗑 Удаление рейтинга покера:\n\n"
+        f"📋 Список игроков:\n{players_list}\n\n"
+        "Введите имя игрока для удаления:"
+    )
+    await state.set_state(UserStates.admin_remove_poker_rating)
+
+@dp.message(F.text == "🔫 Добавить рейтинг мафия")
+async def admin_add_mafia_rating_handler(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    
+    keyboard = ReplyKeyboardBuilder()
+    keyboard.add(KeyboardButton(text="🌆 Добавить в Городскую мафию"))
+    keyboard.add(KeyboardButton(text="🃏 Добавить в Мафию Картель"))
+    keyboard.add(KeyboardButton(text="🔙 Управление рейтингами"))
+    keyboard.adjust(2)
+    
+    await message.answer(
+        "🔫 Добавление рейтинга мафии:\n\n"
+        "Выберите тип мафии:",
+        reply_markup=keyboard.as_markup(resize_keyboard=True)
+    )
+
+@dp.message(F.text == "🌆 Добавить в Городскую мафию")
+async def admin_add_mafia_city_handler(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    await message.answer(
+        "🌆 Добавление рейтинга Городской мафии:\n\n"
+        "Отправьте фото с подписью в формате:\n"
+        "Имя_игрока\n\n"
+        "Пример подписи: Иван Иванов"
+    )
+    await state.set_state(UserStates.admin_add_mafia_city_rating)
+
+@dp.message(F.text == "🃏 Добавить в Мафию Картель")
+async def admin_add_mafia_cartel_handler(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    await message.answer(
+        "🃏 Добавление рейтинга Мафии Картель:\n\n"
+        "Отправьте фото с подписью в формате:\n"
+        "Имя_игрока\n\n"
+        "Пример подписи: Иван Иванов"
+    )
+    await state.set_state(UserStates.admin_add_mafia_cartel_rating)
+
+@dp.message(F.text == "✂️ Удалить рейтинг мафия")
+async def admin_remove_mafia_rating_handler(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    keyboard = ReplyKeyboardBuilder()
+    keyboard.add(KeyboardButton(text="🌆 Удалить из Городской мафии"))
+    keyboard.add(KeyboardButton(text="🃏 Удалить из Мафии Картель"))
+    keyboard.add(KeyboardButton(text="🔙 Управление рейтингами"))
+    keyboard.adjust(2)
+    
+    await message.answer(
+        "✂️ Удаление рейтинга мафии:\n\n"
+        "Выберите тип мафии:",
+        reply_markup=keyboard.as_markup(resize_keyboard=True)
+    )
+
+@dp.message(F.text == "🌆 Удалить из Городской мафии")
+async def admin_remove_mafia_city_handler(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    mafia_city_ratings = db.get_mafia_city_ratings()
+    
+    if not mafia_city_ratings:
+        await message.answer("🌆 Нет рейтингов Городской мафии для удаления")
+        return
+    
+    players_list = "\n".join([f"• {name}" for name in mafia_city_ratings.keys()])
+    await message.answer(
+        f"🌆 Удаление рейтинга Городской мафии:\n\n"
+        f"📋 Список игроков:\n{players_list}\n\n"
+        "Введите имя игрока для удаления:"
+    )
+    await state.set_state(UserStates.admin_remove_mafia_rating)
+    await state.update_data(rating_type="city")
+
+@dp.message(F.text == "🃏 Удалить из Мафии Картель")
+async def admin_remove_mafia_cartel_handler(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    mafia_cartel_ratings = db.get_mafia_cartel_ratings()
+    
+    if not mafia_cartel_ratings:
+        await message.answer("🃏 Нет рейтингов Мафии Картель для удаления")
+        return
+    
+    players_list = "\n".join([f"• {name}" for name in mafia_cartel_ratings.keys()])
+    await message.answer(
+        f"🃏 Удаление рейтинга Мафии Картель:\n\n"
+        f"📋 Список игроков:\n{players_list}\n\n"
+        "Введите имя игрока для удаления:"
+    )
+    await state.set_state(UserStates.admin_remove_mafia_rating)
+    await state.update_data(rating_type="cartel")
+
+@dp.message(UserStates.admin_add_poker_rating, F.photo)
+async def process_add_poker_rating_photo(message: Message, state: FSMContext):
+    if not message.caption:
+        await message.answer("❌ Добавьте подпись с именем игрока")
+        return
+    
+    player_name = message.caption.strip()
+    photo = message.photo[-1]
+    
+    if db.save_poker_rating(player_name, photo.file_id):
+        await message.answer(
+            f"✅ Рейтинг покера для игрока '{player_name}' успешно добавлен!",
+            reply_markup=get_admin_ratings_keyboard()
+        )
+    else:
+        await message.answer("❌ Ошибка при сохранении рейтинга покера", 
+                           reply_markup=get_admin_ratings_keyboard())
+    
+    await state.clear()
+
+@dp.message(UserStates.admin_add_mafia_city_rating, F.photo)
+async def process_add_mafia_city_rating_photo(message: Message, state: FSMContext):
+    if not message.caption:
+        await message.answer("❌ Добавьте подпись с именем игрока")
+        return
+    
+    player_name = message.caption.strip()
+    photo = message.photo[-1]
+    
+    if db.save_mafia_city_rating(player_name, photo.file_id):
+        await message.answer(
+            f"✅ Рейтинг Городской мафии для игрока '{player_name}' успешно добавлен!",
+            reply_markup=get_admin_ratings_keyboard()
+        )
+    else:
+        await message.answer("❌ Ошибка при сохранении рейтинга Городской мафии", 
+                           reply_markup=get_admin_ratings_keyboard())
+    
+    await state.clear()
+
+@dp.message(UserStates.admin_add_mafia_cartel_rating, F.photo)
+async def process_add_mafia_cartel_rating_photo(message: Message, state: FSMContext):
+    if not message.caption:
+        await message.answer("❌ Добавьте подпись с именем игрока")
+        return
+    
+    player_name = message.caption.strip()
+    photo = message.photo[-1]
+    
+    if db.save_mafia_cartel_rating(player_name, photo.file_id):
+        await message.answer(
+            f"✅ Рейтинг Мафии Картель для игрока '{player_name}' успешно добавлен!",
+            reply_markup=get_admin_ratings_keyboard()
+        )
+    else:
+        await message.answer("❌ Ошибка при сохранении рейтинга Мафии Картель", 
+                           reply_markup=get_admin_ratings_keyboard())
+    
+    await state.clear()
+
+@dp.message(UserStates.admin_remove_poker_rating)
+async def process_remove_poker_rating(message: Message, state: FSMContext):
+    player_name = message.text.strip()
+    
+    if db.remove_poker_rating(player_name):
+        await message.answer(
+            f"✅ Рейтинг покера для игрока '{player_name}' удален!",
+            reply_markup=get_admin_ratings_keyboard()
+        )
+    else:
+        await message.answer(
+            f"❌ Игрок '{player_name}' не найден в рейтинге покера",
+            reply_markup=get_admin_ratings_keyboard()
+        )
+    
+    await state.clear()
+
+@dp.message(UserStates.admin_remove_mafia_rating)
+async def process_remove_mafia_rating(message: Message, state: FSMContext):
+    player_name = message.text.strip()
+    data = await state.get_data()
+    rating_type = data.get('rating_type')
+    
+    if rating_type == "city":
+        success = db.remove_mafia_city_rating(player_name)
+        rating_name = "Городской мафии"
+    elif rating_type == "cartel":
+        success = db.remove_mafia_cartel_rating(player_name)
+        rating_name = "Мафии Картель"
+    else:
+        await message.answer("❌ Ошибка типа рейтинга", reply_markup=get_admin_ratings_keyboard())
+        await state.clear()
+        return
+    
+    if success:
+        await message.answer(
+            f"✅ Рейтинг {rating_name} для игрока '{player_name}' удален!",
+            reply_markup=get_admin_ratings_keyboard()
+        )
+    else:
+        await message.answer(
+            f"❌ Игрок '{player_name}' не найден в рейтинге {rating_name}",
+            reply_markup=get_admin_ratings_keyboard()
+        )
+    
+    await state.clear()
 
 @dp.message(F.text == "🔙 Главное меню")
 async def main_menu_handler(message: Message):
