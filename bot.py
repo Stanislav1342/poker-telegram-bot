@@ -11,6 +11,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, Message, InlineKe
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 from dotenv import load_dotenv
 from database import db
+from aiogram.filters import StateFilter 
 
 load_dotenv()
 
@@ -1975,9 +1976,10 @@ async def admin_remove_mafia_rating_handler(message: Message, state: FSMContext)
     )
 
 @dp.message(
-    F.photo & (
-        UserStates.admin_add_poker_rating | 
-        UserStates.admin_add_mafia_city_rating | 
+    F.photo,
+    StateFilter(
+        UserStates.admin_add_poker_rating,
+        UserStates.admin_add_mafia_city_rating,
         UserStates.admin_add_mafia_cartel_rating
     )
 )
