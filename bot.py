@@ -190,7 +190,7 @@ def get_unique_short_name(full_name):
     """Уникальные сокращения для наших игр"""
     if "MagnumPokerLeague" in full_name:
         return "Poker"
-    elif "Мафия-картель" in full_name:
+    elif "Мафия картель" in full_name:
         return "Картель" 
     elif "Городская мафия" in full_name:
         return "Город"
@@ -411,16 +411,10 @@ async def poker_rating_handler(message: Message):
     # Создаем медиагруппу для отправки всех фото одним сообщением
     media_group = []
     
-    for i, (player_name, file_id) in enumerate(poker_ratings.items()):
-        # Первое фото получает подпись
-        if i == 0:
-            caption = f"🏆 Рейтинг покера\n\nВсего игроков: {len(poker_ratings)}"
-        else:
-            caption = ""
-        
+    for file_id in poker_ratings.values():  # Используем только file_id, игнорируем player_name
         media_group.append(types.InputMediaPhoto(
             media=file_id,
-            caption=caption
+            caption=""  # Пустая подпись
         ))
     
     # Отправляем медиагруппу (максимум 10 фото за раз в Telegram API)
@@ -429,21 +423,16 @@ async def poker_rating_handler(message: Message):
             chunk = media_group[i:i+10]
             await message.answer_media_group(chunk)
             
-        # Отправляем клавиатуру отдельным сообщением
-        await message.answer("🏆 Рейтинг покера загружен", 
-                           reply_markup=get_main_keyboard(message.from_user.id))
-        
     except Exception as e:
         logging.error(f"❌ Ошибка отправки медиагруппы покера: {e}")
         # Если медиагруппа не работает, отправляем по одному
-        await message.answer("🏆 Рейтинг покера:", 
-                           reply_markup=get_main_keyboard(message.from_user.id))
-        for player_name, file_id in poker_ratings.items():
+        for file_id in poker_ratings.values():
             try:
                 await message.answer_photo(file_id)
                 await asyncio.sleep(0.2)
             except Exception as e2:
                 logging.error(f"❌ Ошибка отправки фото рейтинга: {e2}")
+      
     
 
 @dp.message(F.text == "🔫 Рейтинг мафия")
@@ -464,15 +453,10 @@ async def mafia_city_rating_handler(message: Message):
     # Создаем медиагруппу
     media_group = []
     
-    for i, (player_name, file_id) in enumerate(mafia_city_ratings.items()):
-        if i == 0:
-            caption = f"🌆 Рейтинг Городской мафии\n\nВсего игроков: {len(mafia_city_ratings)}"
-        else:
-            caption = ""
-        
+    for file_id in mafia_city_ratings.values():
         media_group.append(types.InputMediaPhoto(
             media=file_id,
-            caption=caption
+            caption=""  # Пустая подпись
         ))
     
     try:
@@ -480,14 +464,9 @@ async def mafia_city_rating_handler(message: Message):
             chunk = media_group[i:i+10]
             await message.answer_media_group(chunk)
             
-        await message.answer("🌆 Рейтинг Городской мафии загружен", 
-                           reply_markup=get_main_keyboard(message.from_user.id))
-        
     except Exception as e:
         logging.error(f"❌ Ошибка отправки медиагруппы мафии: {e}")
-        await message.answer("🌆 Рейтинг Городской мафии:", 
-                           reply_markup=get_main_keyboard(message.from_user.id))
-        for player_name, file_id in mafia_city_ratings.items():
+        for file_id in mafia_city_ratings.values():
             try:
                 await message.answer_photo(file_id)
                 await asyncio.sleep(0.2)
@@ -506,15 +485,10 @@ async def mafia_cartel_rating_handler(message: Message):
     # Создаем медиагруппу
     media_group = []
     
-    for i, (player_name, file_id) in enumerate(mafia_cartel_ratings.items()):
-        if i == 0:
-            caption = f"🃏 Рейтинг Мафии Картель\n\nВсего игроков: {len(mafia_cartel_ratings)}"
-        else:
-            caption = ""
-        
+    for file_id in mafia_cartel_ratings.values():
         media_group.append(types.InputMediaPhoto(
             media=file_id,
-            caption=caption
+            caption=""  # Пустая подпись
         ))
     
     try:
@@ -522,19 +496,21 @@ async def mafia_cartel_rating_handler(message: Message):
             chunk = media_group[i:i+10]
             await message.answer_media_group(chunk)
             
-        await message.answer("🃏 Рейтинг Мафии Картель загружен", 
-                           reply_markup=get_main_keyboard(message.from_user.id))
-        
     except Exception as e:
         logging.error(f"❌ Ошибка отправки медиагруппы мафии картель: {e}")
-        await message.answer("🃏 Рейтинг Мафии Картель:", 
-                           reply_markup=get_main_keyboard(message.from_user.id))
-        for player_name, file_id in mafia_cartel_ratings.items():
+        for file_id in mafia_cartel_ratings.values():
             try:
                 await message.answer_photo(file_id)
                 await asyncio.sleep(0.2)
             except Exception as e2:
                 logging.error(f"❌ Ошибка отправки фото рейтинга: {e2}")
+
+@dp.message(F.text == "🔙 Управление рейтингами")
+async def back_to_ratings_handler(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    
+    await message.answer("🏆 Управление рейтингами:", reply_markup=get_admin_ratings_keyboard())
 
 @dp.message(F.text == "🎮 Игры")
 async def games_handler(message: Message):
@@ -2091,7 +2067,6 @@ async def process_rating_photo(message: Message, state: FSMContext):
         UserStates.admin_add_mafia_cartel_rating
     )
 )
-
 async def finish_adding_ratings(message: Message, state: FSMContext):
     data = await state.get_data()
     rating_type = data.get('rating_type')
@@ -2116,20 +2091,13 @@ async def finish_adding_ratings(message: Message, state: FSMContext):
         if success:
             saved_count += 1
     
-    rating_names = {
-        "poker": "покера",
-        "city": "Городской мафии",
-        "cartel": "Мафии Картель"
-    }
-    
+    # Простое сообщение без лишней информации
     await message.answer(
-        f"✅ Добавление завершено!\n\n"
-        f"🏆 Тип рейтинга: {rating_names.get(rating_type, rating_type)}\n"
-        f"📸 Добавлено фото: {saved_count} из {len(photos)}\n"
-        f"👤 Игроков: {saved_count}",
+        f"✅ Добавлено {saved_count} фото",
         reply_markup=get_admin_ratings_keyboard()
     )
     await state.clear()
+
 
 @dp.message(F.text == "🌆 Удалить рейтинг Городской мафии")
 async def admin_remove_mafia_city_handler(message: Message, state: FSMContext):
