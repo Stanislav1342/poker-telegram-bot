@@ -504,7 +504,7 @@ async def poker_rating_handler(message: Message):
     
     # ★★★ ДОБАВЛЯЕМ СООБЩЕНИЕ ПОСЛЕ ФОТО ★★★
     await message.answer(
-        "🏆 <b>Рейтинг покера</b>\n\n"
+        "🏆 <b>Рейтинг покера</b>\n\n" ,
         parse_mode="HTML",
         reply_markup=get_main_keyboard(message.from_user.id)
     )
