@@ -356,8 +356,6 @@ async def rules_handler(message: Message):
 • Только свои 2 карты
 • Только карты со стола  
 • Любую комбинацию своих карт и карт со стола
-
-🎮 <b>Советую пройти мини-тест по покеру</b> чтобы закрепить знания о комбинациях!
 """
     
     try:
@@ -504,7 +502,7 @@ async def poker_rating_handler(message: Message):
     
     # ★★★ ДОБАВЛЯЕМ СООБЩЕНИЕ ПОСЛЕ ФОТО ★★★
     await message.answer(
-        "🏆 <b>Рейтинг покера</b>\n\n" ,
+        "🏆 <b>Рейтинг MagnumPokerLeague</b>\n\n" ,
         parse_mode="HTML",
         reply_markup=get_main_keyboard(message.from_user.id)
     )
@@ -521,7 +519,7 @@ async def mafia_city_rating_handler(message: Message):
     mafia_city_ratings = db.get_mafia_city_ratings()
     
     if not mafia_city_ratings:
-        await message.answer("🌆 Рейтинг Городской мафии пока пуст\nАдминистратор еще не добавил рейтинг", 
+        await message.answer("🌆 Рейтинг Городская мафия пока пуст\nАдминистратор еще не добавил рейтинг", 
                            reply_markup=get_main_keyboard(message.from_user.id))
         return
     
@@ -549,7 +547,7 @@ async def mafia_city_rating_handler(message: Message):
                 logging.error(f"❌ Ошибка отправки фото рейтинга: {e2}")
     
     # Возвращаем клавиатуру после отправки
-    await message.answer("🌆 Рейтинг Городской мафии", reply_markup=get_mafia_rating_keyboard())
+    await message.answer("<b>🌆 Рейтинг Городской мафии<b>", reply_markup=get_mafia_rating_keyboard())
     
 @dp.message(F.text == "🃏 Рейтинг Мафии картель")
 async def mafia_cartel_rating_handler(message: Message):
@@ -584,7 +582,7 @@ async def mafia_cartel_rating_handler(message: Message):
                 logging.error(f"❌ Ошибка отправки фото рейтинга: {e2}")
     
     # Возвращаем клавиатуру после отправки
-    await message.answer("🃏 Рейтинг Мафии Картель", reply_markup=get_mafia_rating_keyboard())
+    await message.answer("<b>🃏 Рейтинг Мафия Картель<b>", reply_markup=get_mafia_rating_keyboard())
 
 @dp.message(F.text == "🔙 Управление рейтингами")
 async def back_to_ratings_handler(message: Message):
