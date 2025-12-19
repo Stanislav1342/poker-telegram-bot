@@ -65,10 +65,8 @@ class UserStates(StatesGroup):
     
     # состояния для рейтингов
     admin_add_poker_rating = State()
-    admin_remove_poker_rating = State()
     admin_add_mafia_city_rating = State()
     admin_add_mafia_cartel_rating = State()
-    admin_remove_mafia_rating = State()
 
 # Загружаем данные из базы при запуске
 players_rating = db.get_all_players()
@@ -1903,13 +1901,18 @@ async def admin_remove_poker_rating_handler(message: Message, state: FSMContext)
         await message.answer("🏆 Нет рейтингов покера для удаления")
         return
     
-    players_list = "\n".join([f"• {name}" for name in poker_ratings.keys()])
+    # Показываем подтверждение удаления ВСЕГО рейтинга
+    keyboard = InlineKeyboardBuilder()
+    keyboard.add(InlineKeyboardButton(text="✅ Да, удалить ВЕСЬ рейтинг", callback_data="confirm_delete_all_poker"))
+    keyboard.add(InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_delete_all_poker"))
+    keyboard.adjust(2)
+    
     await message.answer(
-        f"🗑 Удаление рейтинга покера:\n\n"
-        f"📋 Список игроков:\n{players_list}\n\n"
-        "Введите имя игрока для удаления:"
+        f"⚠️ ВЫ УВЕРЕНЫ, ЧТО ХОТИТЕ УДАЛИТЬ ВЕСЬ РЕЙТИНГ ПОКЕРА?\n\n"
+        f"📊 Будет удалено: {len(poker_ratings)} фото\n"
+        f"🎯 Это действие нельзя отменить!",
+        reply_markup=keyboard.as_markup()
     )
-    await state.set_state(UserStates.admin_remove_poker_rating)
 
 @dp.message(F.text == "🔫 Добавить рейтинг мафия")
 async def admin_add_mafia_rating_handler(message: Message):
@@ -1964,14 +1967,14 @@ async def admin_remove_mafia_rating_handler(message: Message, state: FSMContext)
         return
     
     keyboard = ReplyKeyboardBuilder()
-    keyboard.add(KeyboardButton(text="🌆 Удалить из Городской мафии"))
-    keyboard.add(KeyboardButton(text="🃏 Удалить из Мафии Картель"))
+    keyboard.add(KeyboardButton(text="🌆 Удалить ВЕСЬ рейтинг Городской мафии"))
+    keyboard.add(KeyboardButton(text="🃏 Удалить ВЕСЬ рейтинг Мафии Картель"))
     keyboard.add(KeyboardButton(text="🔙 Управление рейтингами"))
     keyboard.adjust(2)
     
     await message.answer(
         "✂️ Удаление рейтинга мафии:\n\n"
-        "Выберите тип мафии:",
+        "Выберите, какой рейтинг удалить ЦЕЛИКОМ:",
         reply_markup=keyboard.as_markup(resize_keyboard=True)
     )
 
@@ -2054,7 +2057,7 @@ async def finish_adding_ratings(message: Message, state: FSMContext):
     )
     await state.clear()
 
-@dp.message(F.text == "🌆 Удалить из Городской мафии")
+@dp.message(F.text == "🌆 Удалить рейтинг Городской мафии")
 async def admin_remove_mafia_city_handler(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
@@ -2065,16 +2068,19 @@ async def admin_remove_mafia_city_handler(message: Message, state: FSMContext):
         await message.answer("🌆 Нет рейтингов Городской мафии для удаления")
         return
     
-    players_list = "\n".join([f"• {name}" for name in mafia_city_ratings.keys()])
+    keyboard = InlineKeyboardBuilder()
+    keyboard.add(InlineKeyboardButton(text="✅ Да, удалить ВЕСЬ рейтинг", callback_data="confirm_delete_all_mafia_city"))
+    keyboard.add(InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_delete_all_mafia_city"))
+    keyboard.adjust(2)
+    
     await message.answer(
-        f"🌆 Удаление рейтинга Городской мафии:\n\n"
-        f"📋 Список игроков:\n{players_list}\n\n"
-        "Введите имя игрока для удаления:"
+        f"⚠️ ВЫ УВЕРЕНЫ, ЧТО ХОТИТЕ УДАЛИТЬ ВЕСЬ РЕЙТИНГ ГОРОДСКОЙ МАФИИ?\n\n"
+        f"📊 Будет удалено: {len(mafia_city_ratings)} фото\n"
+        f"🎯 Это действие нельзя отменить!",
+        reply_markup=keyboard.as_markup()
     )
-    await state.set_state(UserStates.admin_remove_mafia_rating)
-    await state.update_data(rating_type="city")
 
-@dp.message(F.text == "🃏 Удалить из Мафии Картель")
+@dp.message(F.text == "🃏 Удалить рейтинг Мафии Картель")
 async def admin_remove_mafia_cartel_handler(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
@@ -2085,61 +2091,17 @@ async def admin_remove_mafia_cartel_handler(message: Message, state: FSMContext)
         await message.answer("🃏 Нет рейтингов Мафии Картель для удаления")
         return
     
-    players_list = "\n".join([f"• {name}" for name in mafia_cartel_ratings.keys()])
+    keyboard = InlineKeyboardBuilder()
+    keyboard.add(InlineKeyboardButton(text="✅ Да, удалить ВЕСЬ рейтинг", callback_data="confirm_delete_all_mafia_cartel"))
+    keyboard.add(InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_delete_all_mafia_cartel"))
+    keyboard.adjust(2)
+    
     await message.answer(
-        f"🃏 Удаление рейтинга Мафии Картель:\n\n"
-        f"📋 Список игроков:\n{players_list}\n\n"
-        "Введите имя игрока для удаления:"
+        f"⚠️ ВЫ УВЕРЕНЫ, ЧТО ХОТИТЕ УДАЛИТЬ ВЕСЬ РЕЙТИНГ МАФИИ КАРТЕЛЬ?\n\n"
+        f"📊 Будет удалено: {len(mafia_cartel_ratings)} фото\n"
+        f"🎯 Это действие нельзя отменить!",
+        reply_markup=keyboard.as_markup()
     )
-    await state.set_state(UserStates.admin_remove_mafia_rating)
-    await state.update_data(rating_type="cartel")
-
-@dp.message(UserStates.admin_remove_poker_rating)
-async def process_remove_poker_rating(message: Message, state: FSMContext):
-    player_name = message.text.strip()
-    
-    if db.remove_poker_rating(player_name):
-        await message.answer(
-            f"✅ Рейтинг покера для игрока '{player_name}' удален!",
-            reply_markup=get_admin_ratings_keyboard()
-        )
-    else:
-        await message.answer(
-            f"❌ Игрок '{player_name}' не найден в рейтинге покера",
-            reply_markup=get_admin_ratings_keyboard()
-        )
-    
-    await state.clear()
-
-@dp.message(UserStates.admin_remove_mafia_rating)
-async def process_remove_mafia_rating(message: Message, state: FSMContext):
-    player_name = message.text.strip()
-    data = await state.get_data()
-    rating_type = data.get('rating_type')
-    
-    if rating_type == "city":
-        success = db.remove_mafia_city_rating(player_name)
-        rating_name = "Городской мафии"
-    elif rating_type == "cartel":
-        success = db.remove_mafia_cartel_rating(player_name)
-        rating_name = "Мафии Картель"
-    else:
-        await message.answer("❌ Ошибка типа рейтинга", reply_markup=get_admin_ratings_keyboard())
-        await state.clear()
-        return
-    
-    if success:
-        await message.answer(
-            f"✅ Рейтинг {rating_name} для игрока '{player_name}' удален!",
-            reply_markup=get_admin_ratings_keyboard()
-        )
-    else:
-        await message.answer(
-            f"❌ Игрок '{player_name}' не найден в рейтинге {rating_name}",
-            reply_markup=get_admin_ratings_keyboard()
-        )
-    
-    await state.clear()
 
 @dp.message(F.text == "🔙 Главное меню")
 async def main_menu_handler(message: Message):
@@ -2154,6 +2116,82 @@ async def back_to_admin_handler(message: Message):
     if not is_admin(message.from_user.id):
         return
     await message.answer("Возвращаемся в админ-панель:", reply_markup=get_admin_keyboard())
+
+# Обработчики удаления ВСЕГО рейтинга покера
+@dp.callback_query(F.data == "confirm_delete_all_poker")
+async def confirm_delete_all_poker_handler(callback: types.CallbackQuery):
+    try:
+        # Удаляем ВСЕ записи из таблицы poker_ratings
+        cursor = db.conn.cursor()
+        cursor.execute("DELETE FROM poker_ratings")
+        db.conn.commit()
+        cursor.close()
+        
+        await callback.message.answer(
+            f"✅ Весь рейтинг покера успешно удален!",
+            reply_markup=get_admin_ratings_keyboard()
+        )
+        await callback.answer()
+        
+    except Exception as e:
+        logging.error(f"❌ Ошибка удаления рейтинга покера: {e}")
+        await callback.message.answer("❌ Ошибка при удалении рейтинга", reply_markup=get_admin_ratings_keyboard())
+        await callback.answer()
+
+@dp.callback_query(F.data == "cancel_delete_all_poker")
+async def cancel_delete_all_poker_handler(callback: types.CallbackQuery):
+    await callback.message.answer("❌ Удаление рейтинга покера отменено", reply_markup=get_admin_ratings_keyboard())
+    await callback.answer()
+
+# Обработчики удаления ВСЕГО рейтинга городской мафии
+@dp.callback_query(F.data == "confirm_delete_all_mafia_city")
+async def confirm_delete_all_mafia_city_handler(callback: types.CallbackQuery):
+    try:
+        cursor = db.conn.cursor()
+        cursor.execute("DELETE FROM mafia_city_ratings")
+        db.conn.commit()
+        cursor.close()
+        
+        await callback.message.answer(
+            f"✅ Весь рейтинг Городской мафии успешно удален!",
+            reply_markup=get_admin_ratings_keyboard()
+        )
+        await callback.answer()
+        
+    except Exception as e:
+        logging.error(f"❌ Ошибка удаления рейтинга Городской мафии: {e}")
+        await callback.message.answer("❌ Ошибка при удалении рейтинга", reply_markup=get_admin_ratings_keyboard())
+        await callback.answer()
+
+@dp.callback_query(F.data == "cancel_delete_all_mafia_city")
+async def cancel_delete_all_mafia_city_handler(callback: types.CallbackQuery):
+    await callback.message.answer("❌ Удаление рейтинга Городской мафии отменено", reply_markup=get_admin_ratings_keyboard())
+    await callback.answer()
+
+# Обработчики удаления ВСЕГО рейтинга мафии картель
+@dp.callback_query(F.data == "confirm_delete_all_mafia_cartel")
+async def confirm_delete_all_mafia_cartel_handler(callback: types.CallbackQuery):
+    try:
+        cursor = db.conn.cursor()
+        cursor.execute("DELETE FROM mafia_cartel_ratings")
+        db.conn.commit()
+        cursor.close()
+        
+        await callback.message.answer(
+            f"✅ Весь рейтинг Мафии Картель успешно удален!",
+            reply_markup=get_admin_ratings_keyboard()
+        )
+        await callback.answer()
+        
+    except Exception as e:
+        logging.error(f"❌ Ошибка удаления рейтинга Мафии Картель: {e}")
+        await callback.message.answer("❌ Ошибка при удалении рейтинга", reply_markup=get_admin_ratings_keyboard())
+        await callback.answer()
+
+@dp.callback_query(F.data == "cancel_delete_all_mafia_cartel")
+async def cancel_delete_all_mafia_cartel_handler(callback: types.CallbackQuery):
+    await callback.message.answer("❌ Удаление рейтинга Мафии Картель отменено", reply_markup=get_admin_ratings_keyboard())
+    await callback.answer()
 
 async def cleanup_processed_starts():
     while True:
