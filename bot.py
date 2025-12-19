@@ -12,8 +12,11 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 from dotenv import load_dotenv
 from database import db
 from aiogram.filters import StateFilter 
+from pathlib import Path
 
 load_dotenv()
+
+BASE_DIR = Path(__file__).parent
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
@@ -234,7 +237,7 @@ def get_cancel_registration_keyboard(registrations):
 
 def get_mafia_rating_keyboard():
     keyboard = ReplyKeyboardBuilder()
-    keyboard.add(KeyboardButton(text="🌆 Рейтинг городской мафии"))
+    keyboard.add(KeyboardButton(text="🌆 Рейтинг Городской мафии"))
     keyboard.add(KeyboardButton(text="🃏 Рейтинг Мафии картель"))
     keyboard.add(KeyboardButton(text="🔙 Главное меню"))
     keyboard.adjust(2)
@@ -379,15 +382,35 @@ async def mafia_rules_handler(message: Message):
 async def mafia_city_rules_handler(message: Message):
     """Отправка файла с правилами Городской мафии"""
     try:
-        # Отправляем документ с правилами Городской мафии
+        # Пробуем разные пути
+        possible_paths = [
+            BASE_DIR / "rules" / "Правила Magnum&WRM.docx",
+            BASE_DIR / "tg bot" / "rules" / "Правила Magnum&WRM.docx",
+            Path("/app/rules/Правила Magnum&WRM.docx"),
+            Path("rules/Правила Magnum&WRM.docx"),
+        ]
+        
+        file_path = None
+        for path in possible_paths:
+            if path.exists():
+                file_path = path
+                logging.info(f"✅ Файл найден по пути: {path}")
+                break
+        
+        if not file_path:
+            raise FileNotFoundError("Файл не найден ни по одному из путей")
+        
+        # Отправляем документ
         await message.answer_document(
-            types.FSInputFile("tg bot/rules/Правила Magnum&WRM.docx"),  # Укажите путь к вашему файлу
+            types.FSInputFile(file_path),
             caption="📚 <b>Правила Городской мафии</b>\n\n"
                    "Здесь содержатся полные правила игры в Городскую мафию.",
             parse_mode="HTML",
             reply_markup=get_mafia_rules_selection_keyboard()
         )
+        
     except FileNotFoundError:
+        logging.error("❌ Файл с правилами Городской мафии не найден")
         await message.answer(
             "❌ Файл с правилами Городской мафии временно недоступен.\n"
             "Пожалуйста, обратитесь к администратору.",
@@ -396,7 +419,7 @@ async def mafia_city_rules_handler(message: Message):
     except Exception as e:
         logging.error(f"❌ Ошибка отправки файла Городской мафии: {e}")
         await message.answer(
-            "❌ Произошла ошибка при отправке файла.",
+            f"❌ Произошла ошибка при отправке файла.\nОшибка: {str(e)}",
             reply_markup=get_mafia_rules_selection_keyboard()
         )
 
@@ -404,15 +427,35 @@ async def mafia_city_rules_handler(message: Message):
 async def mafia_cartel_rules_handler(message: Message):
     """Отправка файла с правилами Мафии Картель"""
     try:
-        # Отправляем документ с правилами Мафии Картель
+        # Пробуем разные пути
+        possible_paths = [
+            BASE_DIR / "rules" / "Правила игры.docx",
+            BASE_DIR / "tg bot" / "rules" / "Правила игры.docx",
+            Path("/app/rules/Правила игры.docx"),
+            Path("rules/Правила игры.docx"),
+        ]
+        
+        file_path = None
+        for path in possible_paths:
+            if path.exists():
+                file_path = path
+                logging.info(f"✅ Файл найден по пути: {path}")
+                break
+        
+        if not file_path:
+            raise FileNotFoundError("Файл не найден ни по одному из путей")
+        
+        # Отправляем документ
         await message.answer_document(
-            types.FSInputFile("tg bot/rules/Правила игры.docx"),  # Укажите путь к вашему файлу
+            types.FSInputFile(file_path),
             caption="📚 <b>Правила Мафии Картель</b>\n\n"
                    "Здесь содержатся полные правила игры в Мафию Картель.",
             parse_mode="HTML",
             reply_markup=get_mafia_rules_selection_keyboard()
         )
+        
     except FileNotFoundError:
+        logging.error("❌ Файл с правилами Мафии Картель не найден")
         await message.answer(
             "❌ Файл с правилами Мафии Картель временно недоступен.\n"
             "Пожалуйста, обратитесь к администратору.",
@@ -421,7 +464,7 @@ async def mafia_cartel_rules_handler(message: Message):
     except Exception as e:
         logging.error(f"❌ Ошибка отправки файла Мафии Картель: {e}")
         await message.answer(
-            "❌ Произошла ошибка при отправке файла.",
+            f"❌ Произошла ошибка при отправке файла.\nОшибка: {str(e)}",
             reply_markup=get_mafia_rules_selection_keyboard()
         )
 
@@ -458,7 +501,13 @@ async def poker_rating_handler(message: Message):
                 await asyncio.sleep(0.2)
             except Exception as e2:
                 logging.error(f"❌ Ошибка отправки фото рейтинга: {e2}")
-      
+    
+    # ★★★ ДОБАВЛЯЕМ СООБЩЕНИЕ ПОСЛЕ ФОТО ★★★
+    await message.answer(
+        "🏆 <b>Рейтинг покера</b>\n\n"
+        parse_mode="HTML",
+        reply_markup=get_main_keyboard(message.from_user.id)
+    )
     
 
 @dp.message(F.text == "🔫 Рейтинг мафия")
@@ -467,7 +516,7 @@ async def mafia_rating_handler(message: Message):
                        reply_markup=get_mafia_rating_keyboard())
 
 # Аналогично обновляем для мафии:
-@dp.message(F.text == "🌆 Рейтинг городской мафии")
+@dp.message(F.text == "🌆 Рейтинг Городской мафии")
 async def mafia_city_rating_handler(message: Message):
     mafia_city_ratings = db.get_mafia_city_ratings()
     
