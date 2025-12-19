@@ -52,6 +52,16 @@ class Database:
                 )
             ''')
             
+            # Таблица игроков
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS players (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(100) UNIQUE NOT NULL,
+                    rating REAL NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
             # ★★★ НОВАЯ ТАБЛИЦА: рейтинг мафии (Городская мафия) ★★★
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS mafia_city_ratings (
