@@ -179,6 +179,9 @@ class Database:
         except Exception as e:
             logging.error(f"❌ Ошибка получения всех пользователей бота: {e}")
             return []
+        
+    def get_all_players(self):
+        return {}
 
     def update_game_host(self, game_id, new_host):
         """Обновление ведущего игры"""
