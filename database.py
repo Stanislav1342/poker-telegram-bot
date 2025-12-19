@@ -52,16 +52,6 @@ class Database:
                 )
             ''')
             
-            # Таблица игроков
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS players (
-                    id SERIAL PRIMARY KEY,
-                    name VARCHAR(100) UNIQUE NOT NULL,
-                    rating REAL NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-            
             # ★★★ НОВАЯ ТАБЛИЦА: рейтинг мафии (Городская мафия) ★★★
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS mafia_city_ratings (
@@ -449,73 +439,6 @@ class Database:
         except Exception as e:
             logging.error(f"❌ Ошибка получения записей: {e}")
             return []
-    
-    # ★★★ МЕТОДЫ ДЛЯ ИГРОКОВ ★★★
-    def add_player(self, name, rating):
-        """Добавление игрока"""
-        try:
-            if not self.conn:
-                return False
-            
-            cursor = self.conn.cursor()
-            cursor.execute(
-                "INSERT INTO players (name, rating) VALUES (%s, %s) ON CONFLICT (name) DO UPDATE SET rating = EXCLUDED.rating",
-                (name, rating)
-            )
-            self.conn.commit()
-            cursor.close()
-            return True
-        except Exception as e:
-            logging.error(f"❌ Ошибка добавления игрока: {e}")
-            return False
-    
-    def update_player_rating(self, name, new_rating):
-        """Обновление рейтинга игрока"""
-        try:
-            if not self.conn:
-                return False
-            
-            cursor = self.conn.cursor()
-            cursor.execute(
-                "UPDATE players SET rating = %s WHERE name = %s",
-                (new_rating, name)
-            )
-            self.conn.commit()
-            cursor.close()
-            return cursor.rowcount > 0
-        except Exception as e:
-            logging.error(f"❌ Ошибка обновления рейтинга: {e}")
-            return False
-    
-    def remove_player(self, name):
-        """Удаление игрока"""
-        try:
-            if not self.conn:
-                return False
-            
-            cursor = self.conn.cursor()
-            cursor.execute("DELETE FROM players WHERE name = %s", (name,))
-            self.conn.commit()
-            cursor.close()
-            return True
-        except Exception as e:
-            logging.error(f"❌ Ошибка удаления игрока: {e}")
-            return False
-    
-    def get_all_players(self):
-        """Получение всех игроков"""
-        try:
-            if not self.conn:
-                return {}
-            
-            cursor = self.conn.cursor()
-            cursor.execute("SELECT name, rating FROM players ORDER BY rating DESC")
-            players = {row[0]: row[1] for row in cursor.fetchall()}
-            cursor.close()
-            return players
-        except Exception as e:
-            logging.error(f"❌ Ошибка получения игроков: {e}")
-            return {}
     
     # ★★★ МЕТОДЫ ДЛЯ РЕЙТИНГА МАФИИ (ГОРОД) ★★★
     def save_mafia_city_rating(self, player_name, file_id):
