@@ -408,15 +408,42 @@ async def poker_rating_handler(message: Message):
                            reply_markup=get_main_keyboard(message.from_user.id))
         return
     
-    await message.answer("🏆 Рейтинг покера:", reply_markup=get_main_keyboard(message.from_user.id))
+    # Создаем медиагруппу для отправки всех фото одним сообщением
+    media_group = []
     
-    # Отправляем все фото подряд
-    for player_name, file_id in poker_ratings.items():
-        try:
-            await message.answer_photo(file_id)
-            await asyncio.sleep(0.3)  # Небольшая пауза между фото
-        except Exception as e:
-            logging.error(f"❌ Ошибка отправки фото рейтинга: {e}")
+    for i, (player_name, file_id) in enumerate(poker_ratings.items()):
+        # Первое фото получает подпись
+        if i == 0:
+            caption = f"🏆 Рейтинг покера\n\nВсего игроков: {len(poker_ratings)}"
+        else:
+            caption = ""
+        
+        media_group.append(types.InputMediaPhoto(
+            media=file_id,
+            caption=caption
+        ))
+    
+    # Отправляем медиагруппу (максимум 10 фото за раз в Telegram API)
+    try:
+        for i in range(0, len(media_group), 10):
+            chunk = media_group[i:i+10]
+            await message.answer_media_group(chunk)
+            
+        # Отправляем клавиатуру отдельным сообщением
+        await message.answer("🏆 Рейтинг покера загружен", 
+                           reply_markup=get_main_keyboard(message.from_user.id))
+        
+    except Exception as e:
+        logging.error(f"❌ Ошибка отправки медиагруппы покера: {e}")
+        # Если медиагруппа не работает, отправляем по одному
+        await message.answer("🏆 Рейтинг покера:", 
+                           reply_markup=get_main_keyboard(message.from_user.id))
+        for player_name, file_id in poker_ratings.items():
+            try:
+                await message.answer_photo(file_id)
+                await asyncio.sleep(0.2)
+            except Exception as e2:
+                logging.error(f"❌ Ошибка отправки фото рейтинга: {e2}")
     
 
 @dp.message(F.text == "🔫 Рейтинг мафия")
@@ -434,14 +461,38 @@ async def mafia_city_rating_handler(message: Message):
                            reply_markup=get_main_keyboard(message.from_user.id))
         return
     
-    await message.answer("🌆 Рейтинг Городской мафии:", reply_markup=get_main_keyboard(message.from_user.id))
+    # Создаем медиагруппу
+    media_group = []
     
-    for player_name, file_id in mafia_city_ratings.items():
-        try:
-            await message.answer_photo(file_id)
-            await asyncio.sleep(0.3)
-        except Exception as e:
-            logging.error(f"❌ Ошибка отправки фото рейтинга: {e}")
+    for i, (player_name, file_id) in enumerate(mafia_city_ratings.items()):
+        if i == 0:
+            caption = f"🌆 Рейтинг Городской мафии\n\nВсего игроков: {len(mafia_city_ratings)}"
+        else:
+            caption = ""
+        
+        media_group.append(types.InputMediaPhoto(
+            media=file_id,
+            caption=caption
+        ))
+    
+    try:
+        for i in range(0, len(media_group), 10):
+            chunk = media_group[i:i+10]
+            await message.answer_media_group(chunk)
+            
+        await message.answer("🌆 Рейтинг Городской мафии загружен", 
+                           reply_markup=get_main_keyboard(message.from_user.id))
+        
+    except Exception as e:
+        logging.error(f"❌ Ошибка отправки медиагруппы мафии: {e}")
+        await message.answer("🌆 Рейтинг Городской мафии:", 
+                           reply_markup=get_main_keyboard(message.from_user.id))
+        for player_name, file_id in mafia_city_ratings.items():
+            try:
+                await message.answer_photo(file_id)
+                await asyncio.sleep(0.2)
+            except Exception as e2:
+                logging.error(f"❌ Ошибка отправки фото рейтинга: {e2}")
     
 @dp.message(F.text == "🃏 Мафия Картель")
 async def mafia_cartel_rating_handler(message: Message):
@@ -452,14 +503,38 @@ async def mafia_cartel_rating_handler(message: Message):
                            reply_markup=get_main_keyboard(message.from_user.id))
         return
     
-    await message.answer("🃏 Рейтинг Мафии Картель:", reply_markup=get_main_keyboard(message.from_user.id))
+    # Создаем медиагруппу
+    media_group = []
     
-    for player_name, file_id in mafia_cartel_ratings.items():
-        try:
-            await message.answer_photo(file_id)
-            await asyncio.sleep(0.3)
-        except Exception as e:
-            logging.error(f"❌ Ошибка отправки фото рейтинга: {e}")
+    for i, (player_name, file_id) in enumerate(mafia_cartel_ratings.items()):
+        if i == 0:
+            caption = f"🃏 Рейтинг Мафии Картель\n\nВсего игроков: {len(mafia_cartel_ratings)}"
+        else:
+            caption = ""
+        
+        media_group.append(types.InputMediaPhoto(
+            media=file_id,
+            caption=caption
+        ))
+    
+    try:
+        for i in range(0, len(media_group), 10):
+            chunk = media_group[i:i+10]
+            await message.answer_media_group(chunk)
+            
+        await message.answer("🃏 Рейтинг Мафии Картель загружен", 
+                           reply_markup=get_main_keyboard(message.from_user.id))
+        
+    except Exception as e:
+        logging.error(f"❌ Ошибка отправки медиагруппы мафии картель: {e}")
+        await message.answer("🃏 Рейтинг Мафии Картель:", 
+                           reply_markup=get_main_keyboard(message.from_user.id))
+        for player_name, file_id in mafia_cartel_ratings.items():
+            try:
+                await message.answer_photo(file_id)
+                await asyncio.sleep(0.2)
+            except Exception as e2:
+                logging.error(f"❌ Ошибка отправки фото рейтинга: {e2}")
 
 @dp.message(F.text == "🎮 Игры")
 async def games_handler(message: Message):
@@ -1901,14 +1976,13 @@ async def admin_remove_poker_rating_handler(message: Message, state: FSMContext)
         await message.answer("🏆 Нет рейтингов покера для удаления")
         return
     
-    # Показываем подтверждение удаления ВСЕГО рейтинга
     keyboard = InlineKeyboardBuilder()
-    keyboard.add(InlineKeyboardButton(text="✅ Да, удалить ВЕСЬ рейтинг", callback_data="confirm_delete_all_poker"))
+    keyboard.add(InlineKeyboardButton(text="✅ Да, удалить", callback_data="confirm_delete_all_poker"))
     keyboard.add(InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_delete_all_poker"))
     keyboard.adjust(2)
     
     await message.answer(
-        f"⚠️ ВЫ УВЕРЕНЫ, ЧТО ХОТИТЕ УДАЛИТЬ ВЕСЬ РЕЙТИНГ ПОКЕРА?\n\n"
+        f"⚠️ ВЫ УВЕРЕНЫ, ЧТО ХОТИТЕ УДАЛИТЬ РЕЙТИНГ ПОКЕРА?\n\n"
         f"📊 Будет удалено: {len(poker_ratings)} фото\n"
         f"🎯 Это действие нельзя отменить!",
         reply_markup=keyboard.as_markup()
@@ -1967,14 +2041,14 @@ async def admin_remove_mafia_rating_handler(message: Message, state: FSMContext)
         return
     
     keyboard = ReplyKeyboardBuilder()
-    keyboard.add(KeyboardButton(text="🌆 Удалить ВЕСЬ рейтинг Городской мафии"))
-    keyboard.add(KeyboardButton(text="🃏 Удалить ВЕСЬ рейтинг Мафии Картель"))
+    keyboard.add(KeyboardButton(text="🌆 Удалить рейтинг Городской мафии"))
+    keyboard.add(KeyboardButton(text="🃏 Удалить рейтинг Мафии Картель"))
     keyboard.add(KeyboardButton(text="🔙 Управление рейтингами"))
     keyboard.adjust(2)
     
     await message.answer(
         "✂️ Удаление рейтинга мафии:\n\n"
-        "Выберите, какой рейтинг удалить ЦЕЛИКОМ:",
+        "Выберите тип мафии:",
         reply_markup=keyboard.as_markup(resize_keyboard=True)
     )
 
@@ -2069,12 +2143,12 @@ async def admin_remove_mafia_city_handler(message: Message, state: FSMContext):
         return
     
     keyboard = InlineKeyboardBuilder()
-    keyboard.add(InlineKeyboardButton(text="✅ Да, удалить ВЕСЬ рейтинг", callback_data="confirm_delete_all_mafia_city"))
+    keyboard.add(InlineKeyboardButton(text="✅ Да, удалить", callback_data="confirm_delete_all_mafia_city"))
     keyboard.add(InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_delete_all_mafia_city"))
     keyboard.adjust(2)
     
     await message.answer(
-        f"⚠️ ВЫ УВЕРЕНЫ, ЧТО ХОТИТЕ УДАЛИТЬ ВЕСЬ РЕЙТИНГ ГОРОДСКОЙ МАФИИ?\n\n"
+        f"⚠️ ВЫ УВЕРЕНЫ, ЧТО ХОТИТЕ УДАЛИТЬ РЕЙТИНГ ГОРОДСКОЙ МАФИИ?\n\n"
         f"📊 Будет удалено: {len(mafia_city_ratings)} фото\n"
         f"🎯 Это действие нельзя отменить!",
         reply_markup=keyboard.as_markup()
@@ -2092,12 +2166,12 @@ async def admin_remove_mafia_cartel_handler(message: Message, state: FSMContext)
         return
     
     keyboard = InlineKeyboardBuilder()
-    keyboard.add(InlineKeyboardButton(text="✅ Да, удалить ВЕСЬ рейтинг", callback_data="confirm_delete_all_mafia_cartel"))
+    keyboard.add(InlineKeyboardButton(text="✅ Да, удалить", callback_data="confirm_delete_all_mafia_cartel"))
     keyboard.add(InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_delete_all_mafia_cartel"))
     keyboard.adjust(2)
     
     await message.answer(
-        f"⚠️ ВЫ УВЕРЕНЫ, ЧТО ХОТИТЕ УДАЛИТЬ ВЕСЬ РЕЙТИНГ МАФИИ КАРТЕЛЬ?\n\n"
+        f"⚠️ ВЫ УВЕРЕНЫ, ЧТО ХОТИТЕ УДАЛИТЬ РЕЙТИНГ МАФИИ КАРТЕЛЬ?\n\n"
         f"📊 Будет удалено: {len(mafia_cartel_ratings)} фото\n"
         f"🎯 Это действие нельзя отменить!",
         reply_markup=keyboard.as_markup()
@@ -2117,18 +2191,18 @@ async def back_to_admin_handler(message: Message):
         return
     await message.answer("Возвращаемся в админ-панель:", reply_markup=get_admin_keyboard())
 
-# Обработчики удаления ВСЕГО рейтинга покера
+# Обработчики удаления рейтинга покера
 @dp.callback_query(F.data == "confirm_delete_all_poker")
 async def confirm_delete_all_poker_handler(callback: types.CallbackQuery):
     try:
-        # Удаляем ВСЕ записи из таблицы poker_ratings
+        # Получаем соединение из db и выполняем SQL
         cursor = db.conn.cursor()
         cursor.execute("DELETE FROM poker_ratings")
         db.conn.commit()
         cursor.close()
         
         await callback.message.answer(
-            f"✅ Весь рейтинг покера успешно удален!",
+            f"✅ Рейтинг покера успешно удален!",
             reply_markup=get_admin_ratings_keyboard()
         )
         await callback.answer()
@@ -2137,6 +2211,13 @@ async def confirm_delete_all_poker_handler(callback: types.CallbackQuery):
         logging.error(f"❌ Ошибка удаления рейтинга покера: {e}")
         await callback.message.answer("❌ Ошибка при удалении рейтинга", reply_markup=get_admin_ratings_keyboard())
         await callback.answer()
+
+@dp.callback_query(F.data == "cancel_delete_all_poker")
+async def cancel_delete_all_poker_handler(callback: types.CallbackQuery):
+    await callback.message.answer("❌ Удаление рейтинга покера отменено", reply_markup=get_admin_ratings_keyboard())
+    await callback.answer()
+
+# Аналогично для mafia_city и mafia_cartel
 
 @dp.callback_query(F.data == "cancel_delete_all_poker")
 async def cancel_delete_all_poker_handler(callback: types.CallbackQuery):
