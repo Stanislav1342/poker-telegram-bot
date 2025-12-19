@@ -547,7 +547,7 @@ async def mafia_city_rating_handler(message: Message):
                 logging.error(f"❌ Ошибка отправки фото рейтинга: {e2}")
     
     # Возвращаем клавиатуру после отправки
-    await message.answer("<b>🌆 Рейтинг Городской мафии<b>", reply_markup=get_mafia_rating_keyboard())
+    await message.answer("🌆 <b>Рейтинг Городской мафии</b>\n\n", reply_markup=get_mafia_rating_keyboard())
     
 @dp.message(F.text == "🃏 Рейтинг Мафии картель")
 async def mafia_cartel_rating_handler(message: Message):
@@ -582,7 +582,7 @@ async def mafia_cartel_rating_handler(message: Message):
                 logging.error(f"❌ Ошибка отправки фото рейтинга: {e2}")
     
     # Возвращаем клавиатуру после отправки
-    await message.answer("<b>🃏 Рейтинг Мафия Картель<b>", reply_markup=get_mafia_rating_keyboard())
+    await message.answer("🃏 <b>Рейтинг Мафия Картель/b>\n\n", reply_markup=get_mafia_rating_keyboard())
 
 @dp.message(F.text == "🔙 Управление рейтингами")
 async def back_to_ratings_handler(message: Message):
