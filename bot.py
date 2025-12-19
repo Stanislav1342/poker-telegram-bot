@@ -334,7 +334,7 @@ async def start_handler(message: Message, command: CommandObject):
         last_name=message.from_user.last_name
     )
     
-    welcome_text = "♥️♣️ Добро пожаловать в MagnumPoker ♦️♠️\n\nВыберите действие:"
+    welcome_text = "♥️♣️ Добро пожаловать в Club Magnum ♦️♠️\n\nВыберите действие:"
     await message.answer(welcome_text, reply_markup=get_main_keyboard(message.from_user.id))
 
 @dp.message(F.text == "📚 Правила покера")
