@@ -587,7 +587,7 @@ async def mafia_cartel_rating_handler(message: Message):
                 logging.error(f"❌ Ошибка отправки фото рейтинга: {e2}")
     
     # Возвращаем клавиатуру после отправки
-        await message.answer(
+    await message.answer(
         "🃏 <b>Рейтинг Мафия Картель</b>\n\n" ,
         parse_mode="HTML",
         reply_markup=get_mafia_rating_keyboard()
