@@ -114,6 +114,16 @@ def get_main_keyboard(user_id):
     
     keyboard.adjust(2, 2, 1)
     return keyboard.as_markup(resize_keyboard=True)
+
+# Клавиатура для выбора типа мафии (правила)
+def get_mafia_rules_selection_keyboard():
+    keyboard = ReplyKeyboardBuilder()
+    keyboard.add(KeyboardButton(text="🌆 Городская мафия"))
+    keyboard.add(KeyboardButton(text="🃏 Мафия Картель"))
+    keyboard.add(KeyboardButton(text="🔙 Главное меню"))
+    keyboard.adjust(2)
+    return keyboard.as_markup(resize_keyboard=True)
+
 # Админ клавиатура
 def get_admin_keyboard():
     keyboard = ReplyKeyboardBuilder()
@@ -224,8 +234,8 @@ def get_cancel_registration_keyboard(registrations):
 
 def get_mafia_rating_keyboard():
     keyboard = ReplyKeyboardBuilder()
-    keyboard.add(KeyboardButton(text="🌆 Городская мафия"))
-    keyboard.add(KeyboardButton(text="🃏 Мафия Картель"))
+    keyboard.add(KeyboardButton(text="🌆 Рейтинг городской мафии"))
+    keyboard.add(KeyboardButton(text="🃏 Рейтинг Мафии картель"))
     keyboard.add(KeyboardButton(text="🔙 Главное меню"))
     keyboard.adjust(2)
     return keyboard.as_markup(resize_keyboard=True)
@@ -360,44 +370,60 @@ async def rules_handler(message: Message):
 
 @dp.message(F.text == "📜 Правила мафии")
 async def mafia_rules_handler(message: Message):
-    rules_text = """🎭 <b>Основные правила Мафии</b> 🎭
+    await message.answer(
+        "🎭 Выберите тип мафии для просмотра правил:",
+        reply_markup=get_mafia_rules_selection_keyboard()
+    )
 
-<b>Цель игры:</b>
-• <b>Мафия:</b> уничтожить всех мирных жителей
-• <b>Мирные жители:</b> вычислить и казнить всех мафиози
-
-<b>Состав игры:</b>
-• 7-16 игроков
-• 25% мафии от общего числа игроков
-• Остальные - мирные жители (комиссар, доктор, мирные)
-
-<b>Ход игры:</b>
-1️⃣ <b>Ночь:</b> Мафия выбирает жертву, комиссар проверяет игрока
-2️⃣ <b>День:</b> Обсуждение и голосование
-3️⃣ <b>Казнь:</b> Игрок с наибольшим числом голосов выбывает
-4️⃣ <b>Раскрытие роли:</b> Ведущий объявляет роль казненного
-
-<b>Особые роли:</b>
-• <b>Комиссар:</b> Ночью может проверить игрока (мафия он или нет)
-• <b>Доктор:</b> Может спасти одного игрока от мафии ночью
-
-<b>Победа:</b>
-• Мафия побеждает, когда их число равно числу мирных жителей
-• Мирные побеждают, когда вся мафия вычислена и казнена
-
-🎮 <b>Приходи на игру чтобы почувствовать атмосферу!</b>
-"""
-    
+@dp.message(F.text == "🌆 Городская мафия")
+async def mafia_city_rules_handler(message: Message):
+    """Отправка файла с правилами Городской мафии"""
     try:
-        photo_url = "https://example.com/mafia_rules_image.jpg"  # Можете заменить на свою картинку
-        await message.answer_photo(
-            photo_url,
-            caption=rules_text,
+        # Отправляем документ с правилами Городской мафии
+        await message.answer_document(
+            types.FSInputFile("tg bot/rules/Правила Magnum&WRM.docx"),  # Укажите путь к вашему файлу
+            caption="📚 <b>Правила Городской мафии</b>\n\n"
+                   "Здесь содержатся полные правила игры в Городскую мафию.",
             parse_mode="HTML",
-            reply_markup=get_main_keyboard(message.from_user.id)
+            reply_markup=get_mafia_rules_selection_keyboard()
         )
-    except Exception:
-        await message.answer(rules_text, parse_mode="HTML", reply_markup=get_main_keyboard(message.from_user.id))
+    except FileNotFoundError:
+        await message.answer(
+            "❌ Файл с правилами Городской мафии временно недоступен.\n"
+            "Пожалуйста, обратитесь к администратору.",
+            reply_markup=get_mafia_rules_selection_keyboard()
+        )
+    except Exception as e:
+        logging.error(f"❌ Ошибка отправки файла Городской мафии: {e}")
+        await message.answer(
+            "❌ Произошла ошибка при отправке файла.",
+            reply_markup=get_mafia_rules_selection_keyboard()
+        )
+
+@dp.message(F.text == "🃏 Мафия Картель")
+async def mafia_cartel_rules_handler(message: Message):
+    """Отправка файла с правилами Мафии Картель"""
+    try:
+        # Отправляем документ с правилами Мафии Картель
+        await message.answer_document(
+            types.FSInputFile("tg bot/rules/Правила игры.docx"),  # Укажите путь к вашему файлу
+            caption="📚 <b>Правила Мафии Картель</b>\n\n"
+                   "Здесь содержатся полные правила игры в Мафию Картель.",
+            parse_mode="HTML",
+            reply_markup=get_mafia_rules_selection_keyboard()
+        )
+    except FileNotFoundError:
+        await message.answer(
+            "❌ Файл с правилами Мафии Картель временно недоступен.\n"
+            "Пожалуйста, обратитесь к администратору.",
+            reply_markup=get_mafia_rules_selection_keyboard()
+        )
+    except Exception as e:
+        logging.error(f"❌ Ошибка отправки файла Мафии Картель: {e}")
+        await message.answer(
+            "❌ Произошла ошибка при отправке файла.",
+            reply_markup=get_mafia_rules_selection_keyboard()
+        )
 
 @dp.message(F.text == "🏆 Рейтинг покер")
 async def poker_rating_handler(message: Message):
@@ -441,7 +467,7 @@ async def mafia_rating_handler(message: Message):
                        reply_markup=get_mafia_rating_keyboard())
 
 # Аналогично обновляем для мафии:
-@dp.message(F.text == "🌆 Городская мафия")
+@dp.message(F.text == "🌆 Рейтинг городской мафии")
 async def mafia_city_rating_handler(message: Message):
     mafia_city_ratings = db.get_mafia_city_ratings()
     
@@ -473,7 +499,10 @@ async def mafia_city_rating_handler(message: Message):
             except Exception as e2:
                 logging.error(f"❌ Ошибка отправки фото рейтинга: {e2}")
     
-@dp.message(F.text == "🃏 Мафия Картель")
+    # Возвращаем клавиатуру после отправки
+    await message.answer("🌆 Рейтинг Городской мафии", reply_markup=get_mafia_rating_keyboard())
+    
+@dp.message(F.text == "🃏 Рейтинг Мафии картель")
 async def mafia_cartel_rating_handler(message: Message):
     mafia_cartel_ratings = db.get_mafia_cartel_ratings()
     
@@ -504,6 +533,9 @@ async def mafia_cartel_rating_handler(message: Message):
                 await asyncio.sleep(0.2)
             except Exception as e2:
                 logging.error(f"❌ Ошибка отправки фото рейтинга: {e2}")
+    
+    # Возвращаем клавиатуру после отправки
+    await message.answer("🃏 Рейтинг Мафии Картель", reply_markup=get_mafia_rating_keyboard())
 
 @dp.message(F.text == "🔙 Управление рейтингами")
 async def back_to_ratings_handler(message: Message):
