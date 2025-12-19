@@ -2009,8 +2009,8 @@ async def process_rating_photo(message: Message, state: FSMContext):
 @dp.message(
     F.text == "✅ Афиш больше нет",
     StateFilter(
-        UserStates.admin_add_poker_rating | 
-        UserStates.admin_add_mafia_city_rating | 
+        UserStates.admin_add_poker_rating,
+        UserStates.admin_add_mafia_city_rating,
         UserStates.admin_add_mafia_cartel_rating
     )
 )
